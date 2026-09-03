@@ -137,7 +137,7 @@ class MarkdownSemanticChunker:
                 f"Markdown directory not found: {self.markdown_dir}"
             )
 
-        md_files = sorted(self.markdown_dir.glob("*.md"))
+        md_files = sorted(self.markdown_dir.glob(pattern="*.md"))
 
         if not md_files:
             raise FileNotFoundError(
@@ -154,6 +154,7 @@ class MarkdownSemanticChunker:
         print(f"Loaded {len(documents)} markdown file(s) from {self.markdown_dir}")
         return documents
 
+    # Chunking methods
     def chunk_documents(self, documents: list[Document]) -> list[Document]:
         """Split a list of documents into semantically coherent chunks.
 

@@ -35,7 +35,6 @@ from azure.core.credentials import AzureKeyCredential
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents.indexes.models import (
     HnswAlgorithmConfiguration,
-    HnswParameters,
     SearchField,
     SearchFieldDataType,
     SearchIndex,
@@ -45,7 +44,6 @@ from azure.search.documents.indexes.models import (
     SemanticSearch,
     SimpleField,
     VectorSearch,
-    VectorSearchAlgorithmMetric,
     VectorSearchProfile,
 )
 from dotenv import load_dotenv
@@ -112,22 +110,22 @@ class AISearchIndexCreator:
         fields: list = [
             SimpleField(
                 name="id",
-                type=SearchFieldDataType.String,
+                type=SearchFieldDataType.String,  # ty: ignore[invalid-argument-type]
                 key=True,
             ),
             SimpleField(
                 name="company",
-                type=SearchFieldDataType.String,
+                type=SearchFieldDataType.String,  # ty: ignore[invalid-argument-type]
                 filterable=True,
             ),
             SimpleField(
                 name="year",
-                type=SearchFieldDataType.String,
+                type=SearchFieldDataType.String,  # ty: ignore[invalid-argument-type]
                 filterable=True,
             ),
             SimpleField(
                 name="source_file",
-                type=SearchFieldDataType.String,
+                type=SearchFieldDataType.String,  # ty: ignore[invalid-argument-type]
                 filterable=True,
             ),
             SearchField(
@@ -139,7 +137,7 @@ class AISearchIndexCreator:
                 name="content_vector",
                 type=SearchFieldDataType.Collection(
                     SearchFieldDataType.Single
-                ),
+                ),  # ty: ignore[call-non-callable]
                 vector_search_dimensions=self.embedding_dimensions,
                 vector_search_profile_name="vector-profile",
                 searchable=True,
@@ -148,18 +146,12 @@ class AISearchIndexCreator:
 
         # Vector search configuration (HNSW algorithm)
         vector_search = VectorSearch(
-            algorithm_configurations=[
+            algorithms = [
                 HnswAlgorithmConfiguration(
-                    name="hnsw-config",
-                    kind="hnsw",
-                    parameters=HnswParameters(
-                        m=4,
-                        ef_construction=400,
-                        ef_search=500,
-                        metric=VectorSearchAlgorithmMetric.COSINE,
-                    ),
+                    name="hnsw-config"
                 )
             ],
+
             profiles=[
                 VectorSearchProfile(
                     name="vector-profile",
@@ -214,15 +206,14 @@ class AISearchIndexCreator:
         """
         schema = self.index_schema()
 
-        if sync or overwrite:
-            if self._index_exists():
-                if sync:
-                    self.index_client.delete_index(self.index_name)
-                    print(f"[DELETE] Existing index: {self.index_name}")
-                else:
-                    self.index_client.create_or_update_index(index=schema)
-                    print(f"[UPDATE] Index updated: {self.index_name}")
-                    return self.index_name
+        if (sync or overwrite) and self._index_exists():
+            if sync:
+                self.index_client.delete_index(self.index_name)
+                print(f"[DELETE] Existing index: {self.index_name}")
+            else:
+                self.index_client.create_or_update_index(index=schema)
+                print(f"[UPDATE] Index updated: {self.index_name}")
+                return self.index_name
 
         # Create (idempotent if same schema)
         try:

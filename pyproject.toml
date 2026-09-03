@@ -1,5 +1,5 @@
 [project]
-name = "InvestorIQ AI: ai-powered-investor-intelligence-platform"
+name = "ai-powered-investor-intelligence-platform"
 version = "0.1.0"
 description = "InvestorIQ AI is an AI-powered investor intelligence platform that analyzes financial reports to automatically extract key financial KPIs, business risks, growth drivers, and executive-level insights, while enabling users to ask contextual questions through an interactive AI chat interface."
 readme = "README.md"
