@@ -1,0 +1,38 @@
+# ===========================================
+# Web Framework & API
+# ===========================================
+fastapi
+uvicorn
+pydantic
+Jinja2
+python-multipart
+
+# ===========================================
+# AI/LLM Integration
+# ===========================================
+openai
+langchain-core
+langchain-openai
+langchain-experimental
+
+# ===========================================
+# Database
+# ===========================================
+sqlalchemy
+psycopg2-binary
+
+# ===========================================
+# Azure Services
+# ===========================================
+azure-core
+azure-search-documents
+
+# ===========================================
+# Document Processing
+# ===========================================
+pymupdf4llm
+
+# ===========================================
+# Environment Configuration
+# ===========================================
+python-dotenv

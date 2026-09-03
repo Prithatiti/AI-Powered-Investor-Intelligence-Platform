@@ -1,1 +1,1 @@
-# AI-Powered-Investor-Intelligence-Platform
+# InvestorIQ AI: AI-Powered-Investor-Intelligence-Platform
