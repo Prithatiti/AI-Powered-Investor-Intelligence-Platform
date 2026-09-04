@@ -438,4 +438,4 @@ if __name__ == "__main__":
     metrics = extractor.run(query=args.query)
 
     print("\nExtracted KPIs:")
-    print(json.dumps(metrics.model_dump(by_alias=True), indent=2))
+    print(json.dumps(obj=metrics.model_dump(by_alias=True), indent=2))
