@@ -57,6 +57,10 @@ class MarkdownSemanticChunker:
     markdown_dir : str | Path | None, optional
         Directory that contains the Markdown files to chunk.
         Defaults to ``Data/reports_markdown``.
+    embeddings : AzureOpenAIEmbeddings | None, optional
+        Embedding client used to decide chunk boundaries.  When supplied, it
+        is used instead of building a new one from ``.env`` so the whole
+        pipeline shares a single embedder.
     """
 
     def __init__(
@@ -65,17 +69,10 @@ class MarkdownSemanticChunker:
             "percentile", "standard_deviation", "interquartile", "gradient"
         ] = "percentile",
         markdown_dir: str | Path | None = None,
+        embeddings: AzureOpenAIEmbeddings | None = None,
     ) -> None:
         # Load .env from project root
         load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
-
-        # ---- Capture environment variables ----
-        self.endpoint: str = self._require_env(name="AZURE_OPENAI_ENDPOINT")
-        self.api_key: str = self._require_env(name="AZURE_OPENAI_API_KEY")
-        self.api_version: str = self._require_env(name="AZURE_OPENAI_EMBEDDING_VERSION")
-        self.embedding_model: str = self._require_env(
-            name="AZURE_OPENAI_EMBEDDING_MODEL"
-        )
 
         # Resolve markdown source directory
         self.markdown_dir: Path = (
@@ -83,12 +80,26 @@ class MarkdownSemanticChunker:
         )
 
         # ---- Build the Azure OpenAI embeddings instance ----
-        self.embeddings = AzureOpenAIEmbeddings(
-            azure_endpoint=self.endpoint,
-            api_key=self.api_key,
-            api_version=self.api_version,
-            model=self.embedding_model,
-        )
+        # Use the caller-supplied instance when available so retriever/ingest
+        # and the chunker share one embedder; otherwise fall back to .env.
+        if embeddings is not None:
+            self.embeddings = embeddings
+        else:
+            self.endpoint: str = self._require_env(name="AZURE_OPENAI_ENDPOINT")
+            self.api_key: str = self._require_env(name="AZURE_OPENAI_API_KEY")
+            self.api_version: str = self._require_env(
+                name="AZURE_OPENAI_EMBEDDING_VERSION"
+            )
+            self.embedding_model: str = self._require_env(
+                name="AZURE_OPENAI_EMBEDDING_MODEL"
+            )
+
+            self.embeddings = AzureOpenAIEmbeddings(
+                azure_endpoint=self.endpoint,
+                api_key=self.api_key,
+                api_version=self.api_version,
+                model=self.embedding_model,
+            )
 
         # ---- Build the semantic chunker ----
         self.chunker = SemanticChunker(

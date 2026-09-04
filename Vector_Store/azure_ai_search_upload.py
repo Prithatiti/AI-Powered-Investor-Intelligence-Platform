@@ -67,6 +67,10 @@ class AzureAISearchVectorStore:
     index_name : str, optional
         Name of the target index.  Defaults to ``SEARCH_INDEX_NAME`` and finally
         to ``"investor-reports"``.
+    embeddings : AzureOpenAIEmbeddings | None, optional
+        Embedding client to use for vectorising chunks.  When supplied, it is
+        used instead of building a new one from ``.env`` so the whole pipeline
+        shares a single embedder.
     """
 
     def __init__(
@@ -74,6 +78,7 @@ class AzureAISearchVectorStore:
         endpoint: str | None = None,
         api_key: str | None = None,
         index_name: str | None = None,
+        embeddings: AzureOpenAIEmbeddings | None = None,
     ) -> None:
         # Make .env variables available regardless of the current working dir.
         load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
@@ -99,12 +104,17 @@ class AzureAISearchVectorStore:
         # ------------------------------------------------------------------
         # 2) Embedding client (Azure OpenAI)
         # ------------------------------------------------------------------
-        self.embeddings = AzureOpenAIEmbeddings(
-            azure_endpoint=self._require_env(name="AZURE_OPENAI_ENDPOINT"),
-            api_key=self._require_env(name="AZURE_OPENAI_API_KEY"),
-            api_version=self._require_env(name="AZURE_OPENAI_EMBEDDING_VERSION"),
-            model=self._require_env(name="AZURE_OPENAI_EMBEDDING_MODEL"),
-        )
+        # Use the injected instance when provided so retriever/ingest and the
+        # store share one embedder; otherwise fall back to the .env config.
+        if embeddings is not None:
+            self.embeddings = embeddings
+        else:
+            self.embeddings = AzureOpenAIEmbeddings(
+                azure_endpoint=self._require_env(name="AZURE_OPENAI_ENDPOINT"),
+                api_key=self._require_env(name="AZURE_OPENAI_API_KEY"),
+                api_version=self._require_env(name="AZURE_OPENAI_EMBEDDING_VERSION"),
+                model=self._require_env(name="AZURE_OPENAI_EMBEDDING_MODEL"),
+            )
 
     # ------------------------------------------------------------------
     # Helpers
