@@ -208,7 +208,7 @@ def ingest_directory(source_dir: str | Path | None = None) -> None:
 
     # Embedding client - shared across the whole batch
     embeddings = AzureOpenAIEmbeddings(
-        model=os.getenv(key="AZURE_OPENAI_EMBEDDING_MODEL"),
+        model="text-embedding-ada-002",
         azure_endpoint=os.getenv(key="AZURE_OPENAI_ENDPOINT"),
         api_key=os.getenv(key="AZURE_OPENAI_API_KEY"),
         api_version=os.getenv(key="AZURE_OPENAI_API_VERSION")
@@ -258,7 +258,7 @@ if __name__ == "__main__":
 
     load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
     _embeddings = AzureOpenAIEmbeddings(
-        model = os.getenv(key="AZURE_OPENAI_EMBEDDING_MODEL"),  # ty: ignore[invalid-argument-type]
+        model="text-embedding-ada-002",
         azure_endpoint=os.getenv(key="AZURE_OPENAI_ENDPOINT"),
         api_key=os.getenv(key="AZURE_OPENAI_API_KEY"),
         api_version=os.getenv(key="AZURE_OPENAI_API_VERSION")
