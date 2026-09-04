@@ -79,5 +79,5 @@ if __name__ == "__main__":
     db_name = os.getenv(key="POSTGRES_DATABASE", default="investoriq")
 
     CreateDatabase()
-#     engine = CreateEngine(database=db_name)
-#     CreateFinancialMetricsTable(engine)
+    engine = CreateEngine(database=db_name)
+    CreateFinancialMetricsTable(engine)

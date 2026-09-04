@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from urllib.parse import quote_plus
 
 import psycopg2
 import psycopg2.extensions
@@ -139,7 +140,7 @@ def CreateEngine(database: str) -> Engine:
     user = _get_env(name="POSTGRES_USER")
     password = _get_env(name="POSTGRES_PASSWORD")
 
-    url = f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{database}"
+    url = f"postgresql+psycopg2://{quote_plus(string=user)}:{quote_plus(string=password)}@{host}:{port}/{database}"
     engine = create_engine(url)
     print(f"[OK] Engine created for database '{database}'.")
     return engine

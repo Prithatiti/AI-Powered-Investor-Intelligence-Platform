@@ -10,13 +10,17 @@ Extracts key financial KPIs from investor annual reports using a RAG
 2. Build a focused KPI extraction prompt from that context.
 3. Extract structured KPIs with the Azure OpenAI chat model, parsed
    directly into a Pydantic model (``FinancialMetrics``).
-4. Save the extracted KPIs to a JSON file.
+4. Save the extracted KPIs to the PostgreSQL ``financial_metrics`` table.
+
+A optional JSON export is available for local testing / debugging but
+the primary persistence target is the database.
 
 The module pulls its dependencies from the sibling packages:
 
     Vector_Store.azure_ai_search_retriever.Retriever  -> keyword retrieval
     LLM.azure_openai.AzureOpenAIClient                -> chat client
     LLM.azure_openai.GetStructuredOutput              -> typed parsing
+    Database.save_metrics.SaveMetrics                  -> PostgreSQL insert
 
 Expected .env variables (used via the imported modules):
     AZURE_SEARCH_ENDPOINT             <- Azure AI Search endpoint
@@ -26,11 +30,20 @@ Expected .env variables (used via the imported modules):
     AZURE_OPENAI_API_KEY              <- Azure OpenAI API key
     AZURE_OPENAI_CHAT_VERSION         <- API version fallback for chat
     AZURE_OPENAI_CHAT_MODEL           <- Chat model deployment name
+    POSTGRES_HOST                     <- PostgreSQL host
+    POSTGRES_PORT                     <- PostgreSQL port
+    POSTGRES_DATABASE                 <- PostgreSQL database name
+    POSTGRES_USER                     <- PostgreSQL user
+    POSTGRES_PASSWORD                 <- PostgreSQL password
 
 Usage:
+    from Database.postgres_connect import CreateDatabase, CreateEngine
     from RAG.kpi_extractor import KPIExtractor
 
-    extractor = KPIExtractor()
+    CreateDatabase()
+    engine = CreateEngine("investoriq")
+
+    extractor = KPIExtractor(engine=engine)
     metrics = extractor.run(company="Apple", year="2024")
     print(metrics.model_dump())
 """
@@ -39,16 +52,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
 from LLM.azure_openai import AzureOpenAIClient, GetStructuredOutput
 from Vector_Store.azure_ai_search_retriever import Retriever
 
-# ---------------------------------------------------------------------------
-# Project root (one level above this file's package directory)
-# ---------------------------------------------------------------------------
-PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Engine
 
 
 # ===========================================================================
@@ -92,7 +104,6 @@ class FinancialMetrics(BaseModel):
 # ===========================================================================
 def retrieve_broad_context(
     retriever: Retriever,
-    query: str,
     company: str | None = None,
     year: int | None = None,
     top_k: int = 20,
@@ -100,12 +111,12 @@ def retrieve_broad_context(
     """Retrieve broad financial context from the vector store via keyword
     search and combine the returned chunk texts into a single context block.
 
+    The search query is built automatically from *company* and *year*.
+
     Parameters
     ----------
     retriever : Retriever
         Configured Azure AI Search retriever.
-    query : str
-        Broad keyword query (e.g. ``"financial performance revenue expenses"``).
     company : str | None, optional
         Restrict to a single company.
     year : int | None, optional
@@ -119,6 +130,18 @@ def retrieve_broad_context(
         Newline-joined text of the retrieved chunks, each labelled by its
         source file for traceability.
     """
+
+    query = f"""
+    Annual report financial statements,
+    income statement,
+    balance sheet,
+    cash flow statement,
+    risks,
+    growth drivers,
+    financial performance
+    for {company} fiscal year {year}
+    """
+    
     results = retriever.keyword_search(
         query=query,
         company=company,
@@ -205,18 +228,18 @@ def build_kpi_prompt(
 # ===========================================================================
 def extract_kpis(
     prompt: str,
-    model: str,
     client: AzureOpenAIClient | None = None,
     temperature: float | None = None,
 ) -> FinancialMetrics:
     """Extract structured KPIs from a prompt using the chat model.
 
+    The model deployment name is read from the ``AZURE_OPENAI_CHAT_MODEL``
+    environment variable.
+
     Parameters
     ----------
     prompt : str
         KPI extraction prompt (from :func:`build_kpi_prompt`).
-    model : str
-        Chat model deployment name (e.g. ``"gpt-4o"``).
     client : AzureOpenAIClient | None, optional
         Reusable OpenAI client.  A fresh one is created if omitted.
     temperature : float | None, optional
@@ -227,6 +250,9 @@ def extract_kpis(
     FinancialMetrics
         Parsed, validated KPIs.
     """
+
+    model = _require_env(name="AZURE_OPENAI_CHAT_MODEL")
+    
     return GetStructuredOutput(
         prompt=prompt,
         model=model,
@@ -237,7 +263,7 @@ def extract_kpis(
 
 
 # ===========================================================================
-# Section 5: Persistence — save extracted KPIs to JSON
+# Section 5: Testing helper — save extracted KPIs to a local JSON file
 # ===========================================================================
 def save_kpis_to_json(
     metrics: FinancialMetrics,
@@ -245,10 +271,11 @@ def save_kpis_to_json(
     company: str,
     year: str | int,
 ) -> Path:
-    """Serialise the extracted KPIs to a JSON file under *output_dir*.
+    """Serialise the extracted KPIs to a local JSON file (testing only).
 
-    The JSON is written with the human-friendly aliases (e.g. ``"Revenue"``)
-    as keys for readability.
+    This is a debugging / testing convenience.  The primary persistence
+    path is :func:`Database.save_metrics.SaveMetrics` which writes to
+    PostgreSQL.
 
     Parameters
     ----------
@@ -290,35 +317,29 @@ class KPIExtractor:
 
     Parameters
     ----------
+    engine : sqlalchemy.Engine
+        SQLAlchemy engine for the PostgreSQL database (returned by
+        :func:`Database.postgres_connect.CreateEngine`).  Extracted KPIs
+        are saved to the ``financial_metrics`` table via this engine.
     company : str, optional
         Default company filter used for retrieval.
     year : str | int | None, optional
         Default report year filter used for retrieval.
-    model : str, optional
-        Chat model deployment name.  Defaults to the ``AZURE_OPENAI_CHAT_MODEL``
-        environment variable.
     top_k : int, optional
         Number of chunks retrieved for context.  Defaults to ``20``.
-    output_dir : str | Path | None, optional
-        Where JSON results are saved.  Defaults to
-        ``RAG/extracted_kpis_json`` under the project root.
     """
 
     def __init__(
         self,
+        engine: Engine,
         company: str | None = None,
         year: int | None = None,
-        model: str | None = None,
         top_k: int = 20,
-        output_dir: str | Path | None = None,
     ) -> None:
+        self.engine = engine
         self.company = company
         self.year = year
-        self.model = model or _require_env(name="AZURE_OPENAI_CHAT_MODEL")
         self.top_k = top_k
-        self.output_dir = (
-            Path(output_dir) if output_dir else PROJECT_ROOT / "RAG" / "extracted_kpis_json"
-        )
 
         # Shared clients — created once and reused across runs.
         self.retriever = Retriever()
@@ -326,7 +347,6 @@ class KPIExtractor:
 
     def run(
         self,
-        query: str = "financial performance revenue expenses growth risks",
         company: str | None = None,
         year: int | None = None,
     ) -> FinancialMetrics:
@@ -336,12 +356,10 @@ class KPIExtractor:
             1. Retrieve broad financial context from the vector store.
             2. Build the KPI extraction prompt from the retrieved context.
             3. Extract KPIs using the chat model (structured output).
-            4. Save the extracted KPIs to a JSON file.
+            4. Save the extracted KPIs to PostgreSQL.
 
         Parameters
         ----------
-        query : str, optional
-            Keyword query used to retrieve broad context.
         company : str | None, optional
             Overrides the instance-level company for this run.
         year : str | int | None, optional
@@ -352,6 +370,8 @@ class KPIExtractor:
         FinancialMetrics
             The extracted KPIs.
         """
+        from Database.save_metrics import SaveMetrics
+
         company = company or self.company
         year = int(year) if year is not None else self.year
 
@@ -359,7 +379,6 @@ class KPIExtractor:
         print(f"[1/4] Retrieving context for company={company}, year={year} ...")
         context = retrieve_broad_context(
             retriever=self.retriever,
-            query=query,
             company=company,
             year=year,
             top_k=self.top_k,
@@ -373,15 +392,14 @@ class KPIExtractor:
         print("[3/4] Extracting KPIs with the chat model ...")
         metrics = extract_kpis(
             prompt=prompt,
-            model=self.model,
             client=self.client,
         )
 
-        # Step 4: Save the extracted KPIs to JSON.
-        print("[4/4] Saving KPIs to JSON ...")
-        save_kpis_to_json(
+        # Step 4: Save the extracted KPIs to PostgreSQL.
+        print("[4/4] Saving KPIs to the database ...")
+        SaveMetrics(
+            engine=self.engine,
             metrics=metrics,
-            output_dir=self.output_dir,
             company=company or "Unknown",
             year=year or "unknown",
         )
@@ -415,27 +433,30 @@ def _require_env(name: str) -> str:
 # ===========================================================================
 if __name__ == "__main__":
     import argparse
+    import os
+
+    from Database.postgres_connect import CreateDatabase, CreateEngine
 
     parser = argparse.ArgumentParser(description="Extract KPIs via RAG")
     parser.add_argument(
         "--company", required=True, help="Company name, e.g. Apple"
     )
-    parser.add_argument("--year", help="Report year, e.g. 2024")
-    parser.add_argument("--model", help="Chat model deployment name")
     parser.add_argument(
-        "--query",
-        default="financial performance revenue expenses growth risks",
+        "--year", required=True, help="Report year, e.g. 2024"
     )
-    parser.add_argument("--top-k", type=int, default=20)
     args = parser.parse_args()
 
+    db_name = os.getenv(key="POSTGRES_DATABASE", default="investoriq")
+
+    CreateDatabase()
+    engine = CreateEngine(database=db_name)
+
     extractor = KPIExtractor(
+        engine=engine,
         company=args.company,
         year=args.year,
-        model=args.model,
-        top_k=args.top_k,
     )
-    metrics = extractor.run(query=args.query)
+    metrics = extractor.run()
 
     print("\nExtracted KPIs:")
     print(json.dumps(obj=metrics.model_dump(by_alias=True), indent=2))
