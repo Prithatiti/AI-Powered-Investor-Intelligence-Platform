@@ -1,5 +1,6 @@
 """
 KPI Extractor Module
+====================
 
 Extracts key financial KPIs from investor annual reports using a RAG
 (retrieval-augmented generation) pipeline.  The flow is:
@@ -23,7 +24,7 @@ Expected .env variables (used via the imported modules):
     SEARCH_INDEX_NAME                 <- Index to search
     AZURE_OPENAI_CHAT_ENDPOINT        <- Chat model endpoint
     AZURE_OPENAI_API_KEY              <- Azure OpenAI API key
-    AZURE_OPENAI_EMBEDDING_VERSION    <- API version fallback for chat
+    AZURE_OPENAI_CHAT_VERSION         <- API version fallback for chat
     AZURE_OPENAI_CHAT_MODEL           <- Chat model deployment name
 
 Usage:
@@ -38,21 +39,28 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
 from pydantic import BaseModel, Field
 
 from LLM.azure_openai import AzureOpenAIClient, GetStructuredOutput
 from Vector_Store.azure_ai_search_retriever import Retriever
 
+# ---------------------------------------------------------------------------
+# Project root (one level above this file's package directory)
+# ---------------------------------------------------------------------------
 PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
 
 
-# ---------------------------------------------------------------------------
-# Structured output schema for the KPIs we extract
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# Section 1: Structured output schema for extracted KPIs
+# ===========================================================================
 class FinancialMetrics(BaseModel):
-    """Pydantic schema describing the KPIs extracted from a report."""
+    """Pydantic schema describing the KPIs extracted from an annual report.
+
+    Each field uses an alias matching the human-friendly label the model
+    returns (e.g. ``"Revenue"``, ``"Net Income"``).  The ``populate_by_name``
+    config option allows construction via either the Python name or the alias.
+    """
 
     revenue: str | int | None = Field(default=None, alias="Revenue")
     net_income: str | int | None = Field(default=None, alias="Net Income")
@@ -66,22 +74,22 @@ class FinancialMetrics(BaseModel):
     total_liabilities: str | int | None = Field(
         default=None, alias="Total Liabilities"
     )
-    key_risk_factors: str | list | None = Field(
+    key_risk_factors: list[str] | None = Field(
         default=None, alias="Top Risk Factors"
     )
-    growth_drivers: str | list | None = Field(
+    growth_drivers: list[str] | None = Field(
         default=None, alias="Top Growth Drivers"
     )
-    executive_summary: str | list | None = Field(
+    executive_summary: list[str] | None = Field(
         default=None, alias="Executive Level Financial Summaries"
     )
 
     model_config = {"populate_by_name": True}
 
 
-# ---------------------------------------------------------------------------
-# Module-level helpers (kept importable so the RAG extractor stays testable)
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# Section 2: Retrieval helpers
+# ===========================================================================
 def retrieve_broad_context(
     retriever: Retriever,
     query: str,
@@ -97,7 +105,7 @@ def retrieve_broad_context(
     retriever : Retriever
         Configured Azure AI Search retriever.
     query : str
-        Broad keyword query (e.g. "financial performance revenue expenses").
+        Broad keyword query (e.g. ``"financial performance revenue expenses"``).
     company : str | None, optional
         Restrict to a single company.
     year : int | None, optional
@@ -121,11 +129,16 @@ def retrieve_broad_context(
     sections: list[str] = []
     for i, result in enumerate(results, start=1):
         source = getattr(result, "source_file", "unknown")
-        sections.append(f"--- Chunk {i} (source: {source}) ---\n{result.page_content}")
+        sections.append(
+            f"--- Chunk {i} (source: {source}) ---\n{result.page_content}"
+        )
 
     return "\n\n".join(sections)
 
 
+# ===========================================================================
+# Section 3: Prompt construction
+# ===========================================================================
 def build_kpi_prompt(
     context: str,
     company: str | None = None,
@@ -147,6 +160,7 @@ def build_kpi_prompt(
     str
         A single prompt string instructing the model to extract the KPIs.
     """
+    # Build a scope header that mentions the company and/or year when available.
     scope = [part for part in (company, year) if part]
     header = (
         f"Analyse the annual report of {company} (year {year})."
@@ -154,7 +168,10 @@ def build_kpi_prompt(
         else "Analyse the annual report excerpts below."
     )
 
-    return (
+    # Assemble the full prompt.  The extracted keys must exactly match the
+    # aliases defined in ``FinancialMetrics`` so the structured-output parser
+    # can map them back to Pydantic fields.
+    prompt = (
         f"{header}\n\n"
         "Extract the following financial KPIs from the context and return "
         "them as JSON with the exact keys:\n"
@@ -169,11 +186,23 @@ def build_kpi_prompt(
         "  - Executive Level Financial Summaries\n\n"
         "Use the original context only; do not invent figures. If a value "
         "is not present, set it to null.\n\n"
+        "Rules:\n"
+        "- Use only the provided context.\n"
+        "- Return null if unavailable.\n"
+        "- Financial values must match the report exactly.\n"
+        "- Risk factors should be concise.\n"
+        "- Growth drivers should be concise.\n"
+        "- Return valid JSON only.\n\n"
         "---- REPORT CONTEXT ----\n"
         f"{context}"
     )
 
+    return prompt
 
+
+# ===========================================================================
+# Section 4: KPI extraction via the chat model
+# ===========================================================================
 def extract_kpis(
     prompt: str,
     model: str,
@@ -207,6 +236,9 @@ def extract_kpis(
     )
 
 
+# ===========================================================================
+# Section 5: Persistence — save extracted KPIs to JSON
+# ===========================================================================
 def save_kpis_to_json(
     metrics: FinancialMetrics,
     output_dir: str | Path,
@@ -215,7 +247,7 @@ def save_kpis_to_json(
 ) -> Path:
     """Serialise the extracted KPIs to a JSON file under *output_dir*.
 
-    The JSON is written with the human-friendly aliases (e.g. "Revenue")
+    The JSON is written with the human-friendly aliases (e.g. ``"Revenue"``)
     as keys for readability.
 
     Parameters
@@ -243,16 +275,16 @@ def save_kpis_to_json(
     filename = f"kpis_{company}_{year}.json"
     output_path = output_dir / filename
     output_path.write_text(
-        json.dumps(data, indent=2, ensure_ascii=False),
+        json.dumps(obj=data, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
     print(f"[SAVE] KPIs written to {output_path}")
     return output_path
 
 
-# ---------------------------------------------------------------------------
-# Orchestrator class
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# Section 6: Orchestrator class — ties the full pipeline together
+# ===========================================================================
 class KPIExtractor:
     """End-to-end KPI extraction from the vector store.
 
@@ -269,25 +301,26 @@ class KPIExtractor:
         Number of chunks retrieved for context.  Defaults to ``20``.
     output_dir : str | Path | None, optional
         Where JSON results are saved.  Defaults to
-        ``RAG/extracted_kpis`` under the project root.
+        ``RAG/extracted_kpis_json`` under the project root.
     """
 
     def __init__(
         self,
         company: str | None = None,
-        year: str | int | None = None,
+        year: int | None = None,
         model: str | None = None,
         top_k: int = 20,
         output_dir: str | Path | None = None,
     ) -> None:
         self.company = company
         self.year = year
-        self.model = model or _env(name="AZURE_OPENAI_CHAT_MODEL")
+        self.model = model or _require_env(name="AZURE_OPENAI_CHAT_MODEL")
         self.top_k = top_k
-        self.output_dir = Path(output_dir) if output_dir else (
-            PROJECT_ROOT / "RAG" / "extracted_kpis"
+        self.output_dir = (
+            Path(output_dir) if output_dir else PROJECT_ROOT / "RAG" / "extracted_kpis_json"
         )
 
+        # Shared clients — created once and reused across runs.
         self.retriever = Retriever()
         self.client = AzureOpenAIClient()
 
@@ -295,9 +328,15 @@ class KPIExtractor:
         self,
         query: str = "financial performance revenue expenses growth risks",
         company: str | None = None,
-        year: str | int | None = None,
+        year: int | None = None,
     ) -> FinancialMetrics:
         """Perform the full KPI extraction pipeline.
+
+        Steps:
+            1. Retrieve broad financial context from the vector store.
+            2. Build the KPI extraction prompt from the retrieved context.
+            3. Extract KPIs using the chat model (structured output).
+            4. Save the extracted KPIs to a JSON file.
 
         Parameters
         ----------
@@ -314,9 +353,9 @@ class KPIExtractor:
             The extracted KPIs.
         """
         company = company or self.company
-        year = year or self.year
+        year = int(year) if year is not None else self.year
 
-        # 1) Retrieve broad financial context from the vector store.
+        # Step 1: Retrieve broad financial context from the vector store.
         print(f"[1/4] Retrieving context for company={company}, year={year} ...")
         context = retrieve_broad_context(
             retriever=self.retriever,
@@ -326,11 +365,11 @@ class KPIExtractor:
             top_k=self.top_k,
         )
 
-        # 2) Build the KPI extraction prompt from the retrieved context.
+        # Step 2: Build the KPI extraction prompt from the retrieved context.
         print("[2/4] Building KPI extraction prompt ...")
         prompt = build_kpi_prompt(context=context, company=company, year=year)
 
-        # 3) Extract KPIs using RAG (structured output).
+        # Step 3: Extract KPIs using RAG (structured output).
         print("[3/4] Extracting KPIs with the chat model ...")
         metrics = extract_kpis(
             prompt=prompt,
@@ -338,7 +377,7 @@ class KPIExtractor:
             client=self.client,
         )
 
-        # 4) Save the extracted KPIs to JSON.
+        # Step 4: Save the extracted KPIs to JSON.
         print("[4/4] Saving KPIs to JSON ...")
         save_kpis_to_json(
             metrics=metrics,
@@ -350,10 +389,16 @@ class KPIExtractor:
         return metrics
 
 
-# ---------------------------------------------------------------------------
-# Internal helper for environment lookups
-# ---------------------------------------------------------------------------
-def _env(name: str) -> str:
+# ===========================================================================
+# Section 7: Internal helpers
+# ===========================================================================
+def _require_env(name: str) -> str:
+    """Return an environment variable or raise ``OSError`` if missing.
+
+    This is the module-level equivalent of ``Retriever._require_env`` and
+    ``AzureOpenAIClient._require_env``, kept here so the ``KPIExtractor``
+    class can resolve env vars without instantiating those classes first.
+    """
     import os
 
     value = os.getenv(key=name)
@@ -365,17 +410,22 @@ def _env(name: str) -> str:
     return value
 
 
-# ---------------------------------------------------------------------------
-# CLI entry-point
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# Section 8: CLI entry-point (smoke test)
+# ===========================================================================
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Extract KPIs via RAG")
-    parser.add_argument("--company", required=True, help="Company name, e.g. Apple")
+    parser.add_argument(
+        "--company", required=True, help="Company name, e.g. Apple"
+    )
     parser.add_argument("--year", help="Report year, e.g. 2024")
     parser.add_argument("--model", help="Chat model deployment name")
-    parser.add_argument("--query", default="financial performance revenue expenses growth risks")
+    parser.add_argument(
+        "--query",
+        default="financial performance revenue expenses growth risks",
+    )
     parser.add_argument("--top-k", type=int, default=20)
     args = parser.parse_args()
 
@@ -386,5 +436,6 @@ if __name__ == "__main__":
         top_k=args.top_k,
     )
     metrics = extractor.run(query=args.query)
+
     print("\nExtracted KPIs:")
-    print(metrics.model_dump(by_alias=True, indent=2))
+    print(json.dumps(metrics.model_dump(by_alias=True), indent=2))
