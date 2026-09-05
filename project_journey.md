@@ -156,12 +156,12 @@ Deliverables:
 
 ## Phase 7: KPI Extraction
 
-Status: Pending
+Status: Completed
 
 Module:
 
 ```text
-extraction/kpi_extractor.py
+rag/kpi_extractor.py
 ```
 
 Objective:
@@ -173,8 +173,12 @@ KPIs:
 * Revenue
 * Net Income
 * Cash Flow
-* Debt
-* Operating Margin
+* Operating Income
+* Total Assets
+* Total Liabilities
+* Top Risk Factors
+* Top Growth Drivers
+* Executive Level Financial Summaries
 
 Output:
 
@@ -182,16 +186,24 @@ Output:
 Structured Financial Metrics
 ```
 
+The KPI extractor is now wired into the ingestion pipeline
+(`Ingestion/ingest_documents.py`): after a document's chunks are uploaded
+to the vector store, financial metrics are extracted from the newly ingested
+data and persisted to PostgreSQL.
+
 ---
 
-## Phase 8: Azure SQL Integration
+## Phase 8: PostgreSQL Integration
 
-Status: Pending
+Status: Completed
 
 Module:
 
 ```text
-database/azure_sql.py
+database/postgres_connect.py   # connection / engine
+database/create_table.py       # financial_metrics table
+database/save_metrics.py       # persist KPIs
+database/remove_duplicate_metrics.py
 ```
 
 Objective:
@@ -204,7 +216,8 @@ Output:
 Financial Metrics Database
 ```
 
----
+Metrics extracted during ingestion are persisted to the `financial_metrics`
+table via `SaveMetrics`.
 
 ## Phase 9: FastAPI Backend
 

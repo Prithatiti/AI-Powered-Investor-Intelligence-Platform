@@ -1,8 +1,8 @@
 """InvestorIQ AI - document ingestion API route.
 
 Accepts an uploaded annual-report file (PDF / Markdown / text), persists it
-to ``Data/raw_pdfs``, converts PDFs to Markdown, and ingests the document
-into the Azure AI Search vector store.
+to ``Data/annual_reports_pdfs``, converts PDFs to Markdown, and ingests the
+document into the Azure AI Search vector store.
 
 The uploaded filename must follow the ``{year}_{company}`` convention used
 by the ingestion pipeline, e.g. ``2024_Apple.pdf``.
@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from langchain_openai import AzureOpenAIEmbeddings
 
-from Ingestion.ingest_documents import ingest_document
+from Ingestion.ingest_documents import ingest_document, parse_year_and_company
 from Ingestion.pdf_to_markdown import convert_single_pdf
 from Vector_Store.azure_ai_search_upload import AzureAISearchVectorStore
 
@@ -51,11 +51,36 @@ async def upload_document(file: UploadFile = UPLOAD_FILE):
     if not filename:
         raise HTTPException(status_code=400, detail="No file provided.")
 
+    # Validate the {year}_{company} naming convention (e.g. 2024_Apple)
+    # before touching the filesystem.
+    try:
+        _year, _company = parse_year_and_company(filename=filename)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Invalid filename '{filename}'. Use the format "
+                "'<year>_<company>', e.g. '2024_Apple.pdf'."
+            ),
+        ) from None
+
+    # Validate the file type before saving so nothing is persisted for an
+    # unsupported upload.
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".pdf", ".md", ".txt"}:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unsupported file type '{suffix}'. "
+                "Upload a PDF, Markdown, or text file."
+            ),
+        )
+
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     file_path = UPLOAD_DIR / filename
 
     contents = await file.read()
-    file_path.write_bytes(data=contents)
+    file_path.write_bytes(data=contents)  # overwrites an existing file
 
     # PDFs are converted to Markdown first; Markdown / text files are used
     # directly since they are the format the ingestion pipeline expects.
@@ -70,16 +95,8 @@ async def upload_document(file: UploadFile = UPLOAD_FILE):
                 status_code=500,
                 detail=f"PDF conversion failed: {exc}",
             ) from exc
-    elif file_path.suffix.lower() in {".md", ".txt"}:
-        md_path = file_path
     else:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"Unsupported file type '{file_path.suffix}'. "
-                "Upload a PDF, Markdown, or text file."
-            ),
-        )
+        md_path = file_path
 
     embeddings = AzureOpenAIEmbeddings(
         model=os.getenv(key="AZURE_OPENAI_EMBEDDING_MODEL") or "text-embedding-ada-002",

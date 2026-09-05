@@ -2,7 +2,9 @@
 Document Ingestion Module
 
 End-to-end ingestion pipeline that turns Markdown annual reports into
-embedded chunks stored in the Azure AI Search vector store.
+embedded chunks stored in the Azure AI Search vector store, and then
+extracts financial metrics from the **newly ingested** data and persists
+them to PostgreSQL.
 
 The module exposes three functions:
 
@@ -10,9 +12,13 @@ The module exposes three functions:
    markdown filename following the convention ``{year}_{company}.md``
    (e.g. ``2024_Apple.md`` -> ``("2024", "Apple")``).
 2. :func:`ingest_document` - chunk a single markdown file, embed it, and
-   upload it to the Azure AI Search vector store.  Takes only the file path,
-   an ``AzureOpenAIEmbeddings`` instance for embedding, and an
-   ``AzureAISearchVectorStore`` instance for storage.
+   upload it to the Azure AI Search vector store.  After the chunks are
+   uploaded, it runs the KPI extraction pipeline over the newly ingested
+   data and persists the extracted financial metrics to PostgreSQL.
+   Takes the file path, an ``AzureOpenAIEmbeddings`` instance for
+   embedding, and an ``AzureAISearchVectorStore`` instance for storage.
+   An optional ``sqlalchemy.Engine`` can be passed to reuse an existing
+   database connection.
 3. :func:`ingest_directory` - ingest every ``*.md`` file in a directory.
    Takes only the source directory and returns nothing.
 
@@ -20,6 +26,9 @@ It reuses the existing project modules:
 
     from Ingestion.semantic_chunker import MarkdownSemanticChunker
     from Vector_Store.azure_ai_search_upload import AzureAISearchVectorStore
+    from RAG.kpi_extractor import KPIExtractor
+    from Database.postgres_connect import CreateDatabase, CreateEngine
+    from Database.create_table import CreateFinancialMetricsTable
 
 Directory structure:
     Data/
@@ -30,7 +39,7 @@ Usage:
     from Ingestion.ingest_documents import ingest_document, ingest_directory
     from Vector_Store.azure_ai_search_upload import AzureAISearchVectorStore
 
-    # Single document
+    # Single document (chunks + metrics)
     ingest_document("Data/reports_markdown/2024_Apple.md", embeddings, vector_store)
 
     # Everything in the default markdown directory
@@ -42,6 +51,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 from langchain_core.documents import Document
@@ -49,6 +59,9 @@ from langchain_openai import AzureOpenAIEmbeddings
 
 from Ingestion.semantic_chunker import MarkdownSemanticChunker
 from Vector_Store.azure_ai_search_upload import AzureAISearchVectorStore
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import Engine
 
 # ---------------------------------------------------------------------------
 # Configuration: centralised directory paths (mirrors pdf_to_markdown.py)
@@ -111,13 +124,23 @@ def ingest_document(
     filepath: str | Path,
     embeddings: AzureOpenAIEmbeddings,
     vector_store: AzureAISearchVectorStore,
+    engine: Engine | None = None,
+    extract_metrics: bool = True,
 ) -> int:
-    """Chunk, embed, and store a single Markdown annual report.
+    """Chunk, embed, store, and extract metrics from a single Markdown report.
 
     The function derives the ``company`` and ``year`` from the filename via
     :func:`parse_year_and_company`, reads the file, semantically chunks it
     with ``embeddings``, and uploads the chunks to the Azure AI Search index
     through ``vector_store`` (which embeds them before storage).
+
+    After the chunks have been uploaded it extracts financial metrics using
+    the **newly ingested** data via :class:`RAG.kpi_extractor.KPIExtractor`
+    and persists them to PostgreSQL.  The database connection is either
+    passed in via *engine* or created on the fly from the ``.env`` settings
+    using :func:`Database.postgres_connect.CreateDatabase` and
+    :func:`Database.postgres_connect.CreateEngine`; the ``financial_metrics``
+    table is ensured through :func:`Database.create_table.CreateFinancialMetricsTable`.
 
     Parameters
     ----------
@@ -128,6 +151,13 @@ def ingest_document(
         for computing the vectors that are stored in the index.
     vector_store : AzureAISearchVectorStore
         Vector store backed by the Azure AI Search index to write into.
+    engine : sqlalchemy.Engine | None, optional
+        An optional, already-configured SQLAlchemy engine for PostgreSQL.
+        When ``None``, an engine is created from the environment and the
+        ``financial_metrics`` table is created if missing.
+    extract_metrics : bool, optional
+        When ``True`` (default) financial metrics are extracted from the
+        freshly uploaded chunks and persisted to PostgreSQL.
 
     Returns
     -------
@@ -164,11 +194,71 @@ def ingest_document(
         return 0
 
     # Embed the chunks and store them in the Azure AI Search index
-    return vector_store.upload_chunks(
+    num_uploaded = vector_store.upload_chunks(
         chunks=chunks,
         company=company,
         year=year,
     )
+
+    # Extract financial metrics using the newly ingested data and persist
+    # them to PostgreSQL.
+    if extract_metrics:
+        _extract_and_persist_metrics(
+            engine=engine,
+            company=company,
+            year=year,
+        )
+
+    return num_uploaded
+
+
+# ---------------------------------------------------------------------------
+# Function 2b: Extract metrics from the newly ingested data & persist them
+# ---------------------------------------------------------------------------
+def _extract_and_persist_metrics(
+    engine: Engine | None,
+    company: str,
+    year: str,
+) -> None:
+    """Extract financial metrics from freshly ingested chunks and persist them.
+
+    Runs the RAG-based :class:`RAG.kpi_extractor.KPIExtractor` over the data
+    just uploaded to the vector store (retrieved via the shared index), then
+    saves the resulting KPIs to the PostgreSQL ``financial_metrics`` table.
+    ``KPIExtractor.run`` internally persists the metrics with
+    :func:`Database.save_metrics.SaveMetrics`.
+
+    Parameters
+    ----------
+    engine : sqlalchemy.Engine | None
+        An optional, already-configured SQLAlchemy engine.  When ``None`` one
+        is created from the environment (and the table ensured) on the fly.
+    company : str
+        Company of the newly ingested report.
+    year : str
+        Report year of the newly ingested report.
+
+    Raises
+    ------
+    OSError
+        If a required ``.env`` variable (PostgreSQL or chat model) is missing.
+    """
+    # Import lazily so vector-store-only usage does not require the DB stack.
+    from Database.create_table import CreateFinancialMetricsTable
+    from Database.postgres_connect import CreateDatabase, CreateEngine
+    from RAG.kpi_extractor import KPIExtractor
+
+    if engine is None:
+        database = os.getenv(key="POSTGRES_DATABASE", default="investoriq")
+        CreateDatabase()
+        engine = CreateEngine(database=database)
+        CreateFinancialMetricsTable(engine=engine)
+
+    print(f"[METRICS] Extracting financial metrics for {company} ({year}) "
+          f"from the newly ingested data ...")
+    extractor = KPIExtractor(engine=engine)
+    extractor.run(company=company, year=int(year))
+    print(f"[METRICS] Metrics for {company} ({year}) persisted to PostgreSQL.")
 
 
 # ---------------------------------------------------------------------------
@@ -180,6 +270,11 @@ def ingest_directory(source_dir: str | Path | None = None) -> None:
     Builds the Azure OpenAI embeddings client and the Azure AI Search vector
     store once, then ingests each markdown file.  ``year`` and ``company``
     are parsed from each filename automatically.
+
+    A single PostgreSQL engine is created once (along with the
+    ``financial_metrics`` table) and shared across the whole batch so that
+    after each document's chunks are uploaded, its financial metrics are
+    extracted and persisted to PostgreSQL.
 
     Parameters
     ----------
@@ -220,9 +315,19 @@ def ingest_directory(source_dir: str | Path | None = None) -> None:
         endpoint=os.getenv(key="AZURE_SEARCH_ENDPOINT"),
         api_key=os.getenv(key="AZURE_SEARCH_API_KEY"),
         index_name=os.getenv(key="AZURE_SEARCH_INDEX_NAME")
-        or os.getenv("SEARCH_INDEX_NAME"),
+        or os.getenv(key="SEARCH_INDEX_NAME"),
         embeddings=embeddings,
     )
+
+    # Build the PostgreSQL engine once and share it across the whole batch so
+    # metrics for every ingested file are persisted through the same connection.
+    from Database.create_table import CreateFinancialMetricsTable
+    from Database.postgres_connect import CreateDatabase, CreateEngine
+
+    database = os.getenv(key="POSTGRES_DATABASE", default="investoriq")
+    CreateDatabase()
+    engine = CreateEngine(database=database)
+    CreateFinancialMetricsTable(engine=engine)
 
     for md_file in md_files:
         try:
@@ -230,6 +335,7 @@ def ingest_directory(source_dir: str | Path | None = None) -> None:
                 filepath=md_file,
                 embeddings=embeddings,
                 vector_store=vector_store,
+                engine=engine,
             )
         except Exception as exc:  # noqa: BLE001 - keep the batch going
             print(f"[ERROR] {md_file.name}: {exc}")

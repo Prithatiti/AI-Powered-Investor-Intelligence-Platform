@@ -12,8 +12,11 @@ questions through an interactive AI chat interface.
 InvestorIQ-AI ingests annual report PDFs, converts them into Markdown, splits
 them into semantically coherent chunks using Azure OpenAI embeddings, and
 stores the chunks in an Azure AI Search index for fast, hybrid retrieval.
-Users can then query the platform conversationally to surface relevant
-evidence from across multiple company reports.
+After the chunks are uploaded, the platform extracts financial metrics from
+the **newly ingested** data via RAG and persists them to PostgreSQL for
+dashboard and comparison views.  Users can then query the platform
+conversationally to surface relevant evidence from across multiple company
+reports.
 
 ### Core Pipeline
 
@@ -31,10 +34,11 @@ Search Index  (Ingestion/create_index.py)
         │  AzureAISearchVectorStore.upload_chunks
         ▼
 Vector Store  (Vector_Store/azure_ai_search.py)
-        │  Retrieval + hybrid search
-        ▼
-Retriever   (Vector_Store/retriever.py)
-        │  RAG answering (chat model)
+        │  KPIExtractor (RAG over newly ingested chunks)
+        ├───────────────────────────────┐
+        ▼                               ▼
+Retriever  (Vector_Store/retriever.py)  PostgreSQL financial_metrics
+        │                                 (Database/save_metrics.py)
         ▼
 Investor Insights & Q&A Chat
 ```
@@ -49,7 +53,15 @@ Investor Insights & Q&A Chat
 ├── Ingestion/
 │   ├── pdf_to_markdown.py     # PDF -> Markdown conversion
 │   ├── semantic_chunker.py    # Semantic chunking via embeddings
+│   ├── ingest_documents.py    # Chunk -> embed -> upload -> extract & persist metrics
 │   └── create_index.py        # Azure AI Search index creation
+├── RAG/
+│   └── kpi_extractor.py       # RAG KPI extraction (financial metrics)
+├── Database/
+│   ├── create_table.py        # financial_metrics table
+│   ├── save_metrics.py        # Persist metrics to PostgreSQL
+│   ├── postgres_connect.py    # PostgreSQL connection / engine
+│   └── remove_duplicate_metrics.py
 ├── Vector_Store/
 │   ├── azure_ai_search.py     # Vector store: upload chunks to index
 │   ├── retriever.py           # Hybrid search retrieval
