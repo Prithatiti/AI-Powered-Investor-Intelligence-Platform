@@ -107,9 +107,7 @@ def _run_pipeline_sync(file: UploadFile, events: Queue) -> None:
         # Ensure the target Azure AI Search index exists before uploading
         # chunks. Reuses the existing index-creation implementation; this is
         # a harmless no-op when the index is already present.
-        AISearchIndexCreator(
-            index_name=vector_store.index_name
-        ).create_index()
+        AISearchIndexCreator(index_name=vector_store.index_name).create_index()
 
         # Stage percentages roughly match how long each step takes:
         #   upload/convert :  0 -> 25   (file saved, PDF converted)
@@ -131,11 +129,11 @@ def _run_pipeline_sync(file: UploadFile, events: Queue) -> None:
             on_progress=on_progress,
         )
 
-        events.put(_sse("progress", {"stage": "saving", "percent": 100}))
+        events.put(item=_sse("progress", {"stage": "saving", "percent": 100}))
         events.put(
-            _sse(
-                "complete",
-                {
+            item=_sse(
+                event="complete",
+                data={
                     "message": "Document uploaded and ingested successfully.",
                     "filename": filename,
                     "chunks_indexed": chunks_uploaded,
@@ -143,9 +141,11 @@ def _run_pipeline_sync(file: UploadFile, events: Queue) -> None:
             )
         )
     except HTTPException as exc:
-        events.put(_sse("error", {"message": str(exc.detail)}))
+        events.put(item=_sse(event="error", data={"message": str(object=exc.detail)}))
     except Exception as exc:  # noqa: BLE001 - report any failure via SSE
-        events.put(_sse("error", {"message": f"Ingestion failed: {exc}"}))
+        events.put(
+            item=_sse(event="error", data={"message": f"Ingestion failed: {exc}"})
+        )
 
 
 @router.post(path="/ingestion/upload")
@@ -226,10 +226,10 @@ async def upload_document(file: UploadFile = UPLOAD_FILE):
                 break
 
             # Yield to the event loop so the response can flush queued data.
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(delay=0.05)
 
     return StreamingResponse(
-        event_source(),
+        content=event_source(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
