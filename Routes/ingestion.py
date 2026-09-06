@@ -28,6 +28,7 @@ from langchain_openai import AzureOpenAIEmbeddings
 from Ingestion.ingest_documents import ingest_document, parse_year_and_company
 from Ingestion.pdf_to_markdown import convert_single_pdf
 from Vector_Store.azure_ai_search_upload import AzureAISearchVectorStore
+from Vector_Store.create_index import AISearchIndexCreator
 
 router = APIRouter()
 
@@ -68,7 +69,7 @@ def _run_pipeline_sync(file: UploadFile, events: Queue) -> None:
 
         contents = file.file.read()
         file_path.write_bytes(data=contents)  # overwrites an existing file
-        events.put(_sse("progress", {"stage": "upload", "percent": 20}))
+        events.put(item=_sse(event="progress", data={"stage": "upload", "percent": 20}))
 
         # PDFs are converted to Markdown first; Markdown / text files are used
         # directly since they are the format the pipeline expects.
@@ -85,7 +86,7 @@ def _run_pipeline_sync(file: UploadFile, events: Queue) -> None:
                 ) from exc
         else:
             md_path = file_path
-        events.put(_sse("progress", {"stage": "convert", "percent": 25}))
+        events.put(_sse(event="progress", data={"stage": "convert", "percent": 25}))
 
         embeddings = AzureOpenAIEmbeddings(
             model=os.getenv(key="AZURE_OPENAI_EMBEDDING_MODEL")
@@ -98,9 +99,17 @@ def _run_pipeline_sync(file: UploadFile, events: Queue) -> None:
         vector_store = AzureAISearchVectorStore(
             endpoint=os.getenv(key="AZURE_SEARCH_ENDPOINT"),
             api_key=os.getenv(key="AZURE_SEARCH_API_KEY"),
-            index_name=os.getenv(key="SEARCH_INDEX_NAME"),
+            index_name=os.getenv(key="AZURE_SEARCH_INDEX_NAME")
+            or os.getenv(key="SEARCH_INDEX_NAME"),
             embeddings=embeddings,
         )
+
+        # Ensure the target Azure AI Search index exists before uploading
+        # chunks. Reuses the existing index-creation implementation; this is
+        # a harmless no-op when the index is already present.
+        AISearchIndexCreator(
+            index_name=vector_store.index_name
+        ).create_index()
 
         # Stage percentages roughly match how long each step takes:
         #   upload/convert :  0 -> 25   (file saved, PDF converted)

@@ -60,6 +60,7 @@ from langchain_openai import AzureOpenAIEmbeddings
 
 from Ingestion.semantic_chunker import MarkdownSemanticChunker
 from Vector_Store.azure_ai_search_upload import AzureAISearchVectorStore
+from Vector_Store.create_index import AISearchIndexCreator
 
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
@@ -71,6 +72,25 @@ PROJECT_ROOT: Path = Path(__file__).resolve().parent.parent
 
 # Default directory that contains the Markdown annual reports
 MARKDOWN_SOURCE_DIR: Path = PROJECT_ROOT / "Data" / "reports_markdown"
+
+
+# ---------------------------------------------------------------------------
+# Helper: Ensure the Azure AI Search index exists before ingestion
+# ---------------------------------------------------------------------------
+def _ensure_search_index_exists(index_name: str) -> None:
+    """Create the Azure AI Search index if it does not already exist.
+
+    Delegates index creation entirely to
+    :class:`Vector_Store.create_index.AISearchIndexCreator` — no
+    duplicate schema logic is introduced here.
+
+    Parameters
+    ----------
+    index_name : str
+        The target index name (read from the vector store instance).
+    """
+    creator = AISearchIndexCreator(index_name=index_name)
+    creator.create_index()          # no-op if the index already exists
 
 
 # ---------------------------------------------------------------------------
@@ -340,6 +360,10 @@ def ingest_directory(source_dir: str | Path | None = None) -> None:
         embeddings=embeddings,
     )
 
+    # Ensure the target Azure AI Search index exists before uploading chunks.
+    # If the index is already present this is a harmless no-op.
+    _ensure_search_index_exists(index_name=vector_store.index_name)
+
     # Build the PostgreSQL engine once and share it across the whole batch so
     # metrics for every ingested file are persisted through the same connection.
     from Database.create_table import CreateFinancialMetricsTable
@@ -398,6 +422,9 @@ if __name__ == "__main__":
         or os.getenv(key="SEARCH_INDEX_NAME"),
         embeddings=_embeddings,
     )
+
+    # Ensure the target Azure AI Search index exists before uploading chunks.
+    _ensure_search_index_exists(index_name=_vector_store.index_name)
 
     if args.file:
         ingest_document(
