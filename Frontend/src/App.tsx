@@ -3,7 +3,9 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
 import Layout from './components/Layout'
 
+const Home = lazy(() => import('./pages/Home'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
+const FinancialComparison = lazy(() => import('./pages/FinancialComparison'))
 const Research = lazy(() => import('./pages/Research'))
 const Ingestion = lazy(() => import('./pages/Ingestion'))
 
@@ -21,7 +23,9 @@ export default function App() {
       <Suspense fallback={<PageFallback />}>
         <Routes>
           <Route element={<Layout />}>
-            <Route index element={<Dashboard />} />
+            <Route index element={<Home />} />
+            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="comparison" element={<FinancialComparison />} />
             <Route path="research" element={<Research />} />
             <Route path="ingestion" element={<Ingestion />} />
             <Route path="*" element={<Navigate to="/" replace />} />

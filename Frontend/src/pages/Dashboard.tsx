@@ -1,16 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
-import {
   ArrowDownRight,
   ArrowUpRight,
   Banknote,
@@ -19,38 +9,15 @@ import {
   Gauge,
   RefreshCw,
   Scale,
+  TrendingUp,
+  TriangleAlert,
   Wallet,
 } from 'lucide-react'
 
 import { Pill, SectionTitle } from '../components/ui'
 import { api } from '../lib/api'
-import {
-  formatCompactBn,
-  initials,
-  parseMoney,
-  parseStringList,
-  shortName,
-} from '../lib/format'
+import { initials, parseMoney, parseStringList } from '../lib/format'
 import type { MetricRow } from '../types'
-
-const CHART_COLORS = {
-  revenue: '#34d399',
-  netIncome: '#38bdf8',
-  operatingIncome: '#a78bfa',
-  cashFlow: '#fbbf24',
-  assets: '#34d399',
-  liabilities: '#fb7185',
-}
-
-interface ChartDatum {
-  name: string
-  revenue: number | null
-  netIncome: number | null
-  operatingIncome: number | null
-  cashFlow: number | null
-  assets: number | null
-  liabilities: number | null
-}
 
 function useMetrics() {
   const [data, setData] = useState<MetricRow[]>([])
@@ -84,23 +51,6 @@ function useMetrics() {
   return { data, loading, error, refresh }
 }
 
-const tooltipStyle = {
-  backgroundColor: '#0d1526',
-  border: '1px solid rgba(148,163,184,0.2)',
-  borderRadius: '0.75rem',
-  fontSize: 13,
-}
-
-/** Coerce a recharts tooltip value into a plain number (or null). */
-function toolValue(value: unknown): number | null {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null
-  if (typeof value === 'string') {
-    const n = Number(value)
-    return Number.isNaN(n) ? null : n
-  }
-  return null
-}
-
 export default function Dashboard() {
   const { data, loading, error, refresh } = useMetrics()
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null)
@@ -121,39 +71,18 @@ export default function Dashboard() {
   )
   const selectedRow = selectedRows[0]
 
-  const chartData = useMemo<ChartDatum[]>(
+  const companyRows = useMemo(
     () =>
-      companies.map((company) => {
-        const row = data
-          .filter((r) => r.company === company)
-          .sort((a, b) => b.year.localeCompare(a.year))[0]
-        if (!row) return null as unknown as ChartDatum
-        return {
-          name: shortName(company),
-          revenue: parseMoney(row.revenue),
-          netIncome: parseMoney(row.net_income),
-          operatingIncome: parseMoney(row.operating_income),
-          cashFlow: parseMoney(row.cash_flow),
-          assets: parseMoney(row.total_assets),
-          liabilities: parseMoney(row.total_liabilities),
-        }
-      }),
+      companies
+        .map((company) => {
+          const row = data
+            .filter((r) => r.company === company)
+            .sort((a, b) => b.year.localeCompare(a.year))[0]
+          return row ?? null
+        })
+        .filter((r): r is MetricRow => r !== null),
     [companies, data],
   )
-
-  const summary = useMemo(() => {
-    const values = chartData.filter(
-      (d): d is ChartDatum & { revenue: number; netIncome: number } =>
-        d !== null,
-    )
-    const avgRevenue =
-      values.reduce((sum, d) => sum + (d.revenue ?? 0), 0) /
-      Math.max(values.length, 1)
-    const avgNetIncome =
-      values.reduce((sum, d) => sum + (d.netIncome ?? 0), 0) /
-      Math.max(values.length, 1)
-    return { avgRevenue, avgNetIncome }
-  }, [chartData])
 
   if (loading) {
     return (
@@ -204,144 +133,20 @@ export default function Dashboard() {
       <PageHeader count={data.length} companyCount={companies.length} />
 
       <SummaryCards
-        avgRevenue={summary.avgRevenue}
-        avgNetIncome={summary.avgNetIncome}
         companyCount={companies.length}
         reportCount={data.length}
       />
 
-      {/* Company selector */}
-      <section>
-        <SectionTitle
-          title="Reports analyzed"
-          subtitle="Select a company to drill into its scorecard"
-        />
-        <div className="flex flex-wrap gap-2.5">
-          {companies.map((company) => {
-            const active = company === selected
-            return (
-              <button
-                key={company}
-                type="button"
-                onClick={() => setSelectedCompany(company)}
-                className={`flex items-center gap-2.5 rounded-xl border px-3.5 py-2 transition-all ${
-                  active
-                    ? 'border-brand-500/50 bg-brand-500/10 text-brand-200 shadow-glow'
-                    : 'border-slate-700/60 bg-ink-800/40 text-slate-300 hover:border-slate-600 hover:text-slate-100'
-                }`}
-              >
-                <span
-                  className={`flex h-7 w-7 items-center justify-center rounded-lg text-[11px] font-bold ${
-                    active
-                      ? 'bg-brand-500 text-ink-950'
-                      : 'bg-ink-700 text-slate-300'
-                  }`}
-                >
-                  {initials(company)}
-                </span>
-                <span className="text-sm font-medium">{company}</span>
-                <span className="text-xs text-slate-500">
-                  FY{selectedRows[0]?.year}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      </section>
+      {/* KPI comparison */}
+      <KpiComparisonGrid rows={companyRows} />
 
-      {/* Charts */}
-      <section className="grid gap-6 md:grid-cols-2">
-        <ChartPanel
-          title="Revenue vs Net Income"
-          subtitle="Latest fiscal year · in USD billions"
-        >
-          <ComparableBarChart
-            data={chartData}
-            bars={[
-              { key: 'revenue', name: 'Revenue', color: CHART_COLORS.revenue },
-              {
-                key: 'netIncome',
-                name: 'Net Income',
-                color: CHART_COLORS.netIncome,
-              },
-            ]}
-          />
-        </ChartPanel>
-
-        <ChartPanel
-          title="Operating Income vs Cash Flow"
-          subtitle="Latest fiscal year · in USD billions"
-        >
-          <ComparableBarChart
-            data={chartData}
-            bars={[
-              {
-                key: 'operatingIncome',
-                name: 'Operating Income',
-                color: CHART_COLORS.operatingIncome,
-              },
-              {
-                key: 'cashFlow',
-                name: 'Cash Flow',
-                color: CHART_COLORS.cashFlow,
-              },
-            ]}
-          />
-        </ChartPanel>
-      </section>
-
-      <section>
-        <ChartPanel
-          full
-          title="Balance sheet: Total Assets vs Total Liabilities"
-          subtitle="Latest fiscal year · in USD billions"
-        >
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={chartData} barGap={4} margin={{ left: -8, right: 8 }}>
-              <defs>
-                <linearGradient id="gradAssets" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={CHART_COLORS.assets} stopOpacity={0.95} />
-                  <stop offset="100%" stopColor={CHART_COLORS.assets} stopOpacity={0.35} />
-                </linearGradient>
-                <linearGradient id="gradLiab" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={CHART_COLORS.liabilities} stopOpacity={0.9} />
-                  <stop offset="100%" stopColor={CHART_COLORS.liabilities} stopOpacity={0.3} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke="rgba(148,163,184,0.08)" vertical={false} />
-              <XAxis
-                dataKey="name"
-                tick={{ fill: '#94a3b8', fontSize: 12 }}
-                axisLine={{ stroke: 'rgba(148,163,184,0.15)' }}
-                tickLine={false}
-              />
-              <YAxis
-                tick={{ fill: '#64748b', fontSize: 12 }}
-                axisLine={false}
-                tickLine={false}
-                tickFormatter={(v: number) => formatCompactBn(v)}
-              />
-              <Tooltip
-                cursor={{ fill: 'rgba(148,163,184,0.06)' }}
-                contentStyle={tooltipStyle}
-                formatter={(value, name) => [
-                  formatCompactBn(toolValue(value)),
-                  String(name),
-                ]}
-              />
-              <Legend
-                wrapperStyle={{ fontSize: 12, color: '#94a3b8' }}
-                iconType="circle"
-              />
-              <Bar dataKey="assets" name="Assets" fill="url(#gradAssets)" radius={[6, 6, 0, 0]} maxBarSize={42} />
-              <Bar dataKey="liabilities" name="Liabilities" fill="url(#gradLiab)" radius={[6, 6, 0, 0]} maxBarSize={42} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartPanel>
-      </section>
-
-      {/* Company scorecard */}
-      {selectedRow && <CompanyScorecard row={selectedRow} />}
+      {/* Detailed company analysis */}
+      <CompanyDetailedSection
+        options={companyRows}
+        selected={selected}
+        selectedRow={selectedRow}
+        onSelect={(company) => setSelectedCompany(company)}
+      />
     </div>
   )
 }
@@ -378,24 +183,18 @@ function PageHeader({
 }
 
 function SummaryCards({
-  avgRevenue,
-  avgNetIncome,
   companyCount,
   reportCount,
 }: {
-  avgRevenue: number
-  avgNetIncome: number
   companyCount: number
   reportCount: number
 }) {
   const cards = [
     { label: 'Companies tracked', value: String(companyCount), icon: Building2, tone: 'text-brand-300 bg-brand-500/10' },
     { label: 'Reports analyzed', value: String(reportCount), icon: FileStack, tone: 'text-accent-400 bg-accent-500/10' },
-    { label: 'Avg revenue', value: formatCompactBn(avgRevenue), icon: Banknote, tone: 'text-violet-300 bg-violet-500/10' },
-    { label: 'Avg net income', value: formatCompactBn(avgNetIncome), icon: Gauge, tone: 'text-amber-300 bg-amber-500/10' },
   ]
   return (
-    <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <section className="grid grid-cols-1 gap-4 sm:grid-cols-2">
       {cards.map((card) => {
         const Icon = card.icon
         return (
@@ -423,173 +222,191 @@ function SummaryCards({
   )
 }
 
-function ChartPanel({
-  title,
-  subtitle,
-  children,
-  full = false,
-}: {
-  title: string
-  subtitle: string
-  children: ReactNode
-  full?: boolean
-}) {
-  return (
-    <div className={`panel p-5 ${full ? '' : 'h-full min-h-[340px]'}`}>
-      <SectionTitle title={title} subtitle={subtitle} />
-      <div className="h-[260px]">{children}</div>
-    </div>
+const FIGURE_RE = /\$[\d,.]+[BM]?|\d[\d,]*(?:\.\d+)?%/
+
+function renderHighlightedFigures(text: string): ReactNode {
+  const parts = text.split(/(\$[\d,.]+[BM]?|\d[\d,]*(?:\.\d+)?%)/g)
+  return parts.map((part, index) =>
+    FIGURE_RE.test(part) ? (
+      <strong key={index} className="font-semibold text-brand-300">
+        {part}
+      </strong>
+    ) : (
+      <span key={index}>{part}</span>
+    ),
   )
 }
 
-function ComparableBarChart({
-  data,
-  bars,
+function CompanyDetailedSection({
+  options,
+  selected,
+  selectedRow,
+  onSelect,
 }: {
-  data: ChartDatum[]
-  bars: { key: keyof ChartDatum; name: string; color: string }[]
+  options: MetricRow[]
+  selected: string | null
+  selectedRow: MetricRow | undefined
+  onSelect: (company: string) => void
 }) {
-  return (
-    <ResponsiveContainer width="100%" height="100%">
-      <BarChart data={data} barGap={4} margin={{ left: -8, right: 8 }}>
-        <defs>
-          {bars.map((bar) => (
-            <linearGradient
-              key={String(bar.key)}
-              id={`grad-${String(bar.key)}`}
-              x1="0"
-              y1="0"
-              x2="0"
-              y2="1"
-            >
-              <stop offset="0%" stopColor={bar.color} stopOpacity={0.95} />
-              <stop offset="100%" stopColor={bar.color} stopOpacity={0.3} />
-            </linearGradient>
-          ))}
-        </defs>
-        <CartesianGrid stroke="rgba(148,163,184,0.08)" vertical={false} />
-        <XAxis
-          dataKey="name"
-          tick={{ fill: '#94a3b8', fontSize: 12 }}
-          axisLine={{ stroke: 'rgba(148,163,184,0.15)' }}
-          tickLine={false}
-        />
-        <YAxis
-          tick={{ fill: '#64748b', fontSize: 12 }}
-          axisLine={false}
-          tickLine={false}
-          tickFormatter={(v: number) => formatCompactBn(v)}
-        />
-        <Tooltip
-          cursor={{ fill: 'rgba(148,163,184,0.06)' }}
-          contentStyle={tooltipStyle}
-          formatter={(value, name) => [
-            formatCompactBn(toolValue(value)),
-            String(name),
-          ]}
-        />
-        <Legend wrapperStyle={{ fontSize: 12, color: '#94a3b8' }} iconType="circle" />
-        {bars.map((bar) => (
-          <Bar
-            key={String(bar.key)}
-            dataKey={String(bar.key)}
-            name={bar.name}
-            fill={`url(#grad-${String(bar.key)})`}
-            radius={[6, 6, 0, 0]}
-            maxBarSize={42}
-          />
-        ))}
-      </BarChart>
-    </ResponsiveContainer>
-  )
-}
-
-function CompanyScorecard({ row }: { row: MetricRow }) {
-  const riskFactors = parseStringList(row.risk_factors)
-  const growthDrivers = parseStringList(row.growth_drivers)
-  const executiveSummary = parseStringList(row.executive_summary)
-
-  const metrics = [
-    { label: 'Revenue', value: row.revenue, key: 'revenue' as const, icon: Banknote, tone: 'text-brand-300 bg-brand-500/10' },
-    { label: 'Net Income', value: row.net_income, key: 'netIncome' as const, icon: ArrowUpRight, tone: 'text-sky-300 bg-sky-500/10' },
-    { label: 'Operating Income', value: row.operating_income, key: 'operatingIncome' as const, icon: Gauge, tone: 'text-violet-300 bg-violet-500/10' },
-    { label: 'Cash Flow', value: row.cash_flow, key: 'cashFlow' as const, icon: Wallet, tone: 'text-amber-300 bg-amber-500/10' },
-    { label: 'Total Assets', value: row.total_assets, key: 'assets' as const, icon: Scale, tone: 'text-emerald-300 bg-emerald-500/10' },
-    { label: 'Total Liabilities', value: row.total_liabilities, key: 'liabilities' as const, icon: ArrowDownRight, tone: 'text-rose-300 bg-rose-500/10' },
-  ]
+  const riskFactors = selectedRow
+    ? parseStringList(selectedRow.risk_factors)
+    : []
+  const growthDrivers = selectedRow
+    ? parseStringList(selectedRow.growth_drivers)
+    : []
+  const executiveSummary = selectedRow
+    ? parseStringList(selectedRow.executive_summary)
+    : []
 
   return (
     <section className="flex flex-col gap-6">
-      <SectionTitle
-        title={`${row.company} · FY${row.year} scorecard`}
-        subtitle="Financial KPIs extracted from the annual report"
-      />
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-brand-400">
+            Detailed analysis
+          </p>
+          <h2 className="text-lg font-semibold tracking-tight text-slate-100">
+            Company Breakdown
+          </h2>
+          <p className="mt-1 text-sm text-slate-400">
+            Select a company to review its risk factors, growth drivers, and
+            executive summary.
+          </p>
+        </div>
+        <select
+          value={selected ?? ''}
+          onChange={(e) => onSelect(e.target.value)}
+          aria-label="Select company for detailed analysis"
+          className="w-56 rounded-lg border border-slate-600/70 bg-ink-700/70 px-3 py-2 text-sm text-slate-100 focus:border-brand-500/60 focus:outline-none sm:w-60 [color-scheme:dark]"
+        >
+          {options.map((row) => (
+            <option
+              key={row.company}
+              value={row.company}
+              className="bg-ink-900 text-slate-100"
+            >
+              {row.company} FY{row.year}
+            </option>
+          ))}
+        </select>
+      </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {metrics.map((metric) => {
-          const Icon = metric.icon
-          const numeric = parseMoney(valueFor(row, metric.key))
-          return (
-            <div key={metric.label} className="panel panel-hover p-5">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium uppercase tracking-wider text-slate-500">
-                  {metric.label}
+      {selectedRow && (
+        <div className="flex flex-col gap-6">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="panel flex flex-col gap-3 p-5">
+              <SectionTitle
+                title="Risk Factors"
+                subtitle="Top risks extracted from the annual report"
+              />
+              {riskFactors.length ? (
+                <ul className="flex flex-col gap-2">
+                  {riskFactors.map((item, index) => (
+                    <li
+                      key={index}
+                      className="flex gap-2.5 rounded-lg border border-rose-500/10 bg-rose-500/5 px-3.5 py-2.5 text-sm leading-relaxed text-slate-300"
+                    >
+                      <TriangleAlert
+                        size={14}
+                        className="mt-0.5 shrink-0 text-rose-400"
+                      />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  No risk factors extracted.
                 </p>
-                <div
-                  className={`flex h-8 w-8 items-center justify-center rounded-lg ${metric.tone}`}
-                >
-                  <Icon size={16} />
-                </div>
-              </div>
-              <p className="mt-2 text-2xl font-bold tracking-tight text-slate-100">
-                {metric.value ?? '—'}
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                {numeric !== null ? `${formatCompactBn(numeric)} USD` : 'Not disclosed'}
-              </p>
+              )}
             </div>
-          )
-        })}
-      </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <ListPanel
-          title="Top risk factors"
-          items={riskFactors}
-          tone="rose"
-          empty="No risk factors extracted."
-        />
-        <ListPanel
-          title="Top growth drivers"
-          items={growthDrivers}
-          tone="emerald"
-          empty="No growth drivers extracted."
-        />
-      </div>
+            <div className="panel flex flex-col gap-3 p-5">
+              <SectionTitle
+                title="Growth Drivers"
+                subtitle="Momentum drivers extracted from the annual report"
+              />
+              {growthDrivers.length ? (
+                <ul className="flex flex-col gap-2">
+                  {growthDrivers.map((item, index) => (
+                    <li
+                      key={index}
+                      className="flex gap-2.5 rounded-lg border border-brand-500/10 bg-brand-500/5 px-3.5 py-2.5 text-sm leading-relaxed text-slate-300"
+                    >
+                      <TrendingUp
+                        size={14}
+                        className="mt-0.5 shrink-0 text-brand-400"
+                      />
+                      <span>{renderHighlightedFigures(item)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  No growth drivers extracted.
+                </p>
+              )}
+            </div>
+          </div>
 
-      <div className="panel p-6">
-        <SectionTitle
-          title="Executive-level financial summary"
-          subtitle="Extracted narrative highlights from the report"
-        />
-        {executiveSummary.length ? (
-          <ul className="flex flex-col gap-3">
-            {executiveSummary.map((point, index) => (
-              <li key={index} className="flex gap-3 text-sm leading-relaxed text-slate-300">
-                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" />
-                <span>{point}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-slate-500">No executive summary extracted.</p>
-        )}
-      </div>
+          <div className="panel flex flex-col gap-3 p-6">
+            <SectionTitle
+              title="Executive Financial Summary"
+              subtitle="Extracted narrative highlights from the report"
+            />
+            {executiveSummary.length ? (
+              <ul className="flex flex-col gap-2.5">
+                {executiveSummary.map((point, index) => (
+                  <li
+                    key={index}
+                    className="flex gap-2.5 text-sm leading-relaxed text-slate-300"
+                  >
+                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" />
+                    <span>{point}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-slate-500">
+                No executive summary extracted.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
     </section>
   )
 }
 
-function valueFor(row: MetricRow, key: 'revenue' | 'netIncome' | 'operatingIncome' | 'cashFlow' | 'assets' | 'liabilities'): string | null {
+type KpiKey =
+  | 'revenue'
+  | 'netIncome'
+  | 'operatingIncome'
+  | 'cashFlow'
+  | 'assets'
+  | 'liabilities'
+
+const KPI_DEFS = [
+  { key: 'revenue', title: 'Revenue', subtitle: 'Total company revenue', icon: Banknote, tone: 'text-brand-300 bg-brand-500/10' },
+  { key: 'netIncome', title: 'Net Income', subtitle: 'Net profitability after expenses', icon: ArrowUpRight, tone: 'text-sky-300 bg-sky-500/10' },
+  { key: 'operatingIncome', title: 'Operating Income', subtitle: 'Income from core operations', icon: Gauge, tone: 'text-violet-300 bg-violet-500/10' },
+  { key: 'cashFlow', title: 'Operating Cash Flow', subtitle: 'Cash generated from operations', icon: Wallet, tone: 'text-amber-300 bg-amber-500/10' },
+  { key: 'assets', title: 'Total Assets', subtitle: 'Everything the company owns', icon: Scale, tone: 'text-emerald-300 bg-emerald-500/10' },
+  { key: 'liabilities', title: 'Total Liabilities', subtitle: 'Outstanding financial obligations', icon: ArrowDownRight, tone: 'text-rose-300 bg-rose-500/10' },
+] as const
+
+const COMPANY_BAR_COLORS = ['#34d399', '#38bdf8', '#a78bfa', '#fbbf24', '#f472b6', '#fb7185']
+
+const COMPANY_CHIP_CLASSES = [
+  'bg-brand-500/15 text-brand-300',
+  'bg-accent-500/15 text-accent-400',
+  'bg-violet-500/15 text-violet-300',
+  'bg-amber-500/15 text-amber-300',
+  'bg-pink-500/15 text-pink-300',
+  'bg-rose-500/15 text-rose-300',
+]
+
+function kpiValue(row: MetricRow, key: KpiKey): string | null {
   switch (key) {
     case 'revenue':
       return row.revenue
@@ -606,36 +423,96 @@ function valueFor(row: MetricRow, key: 'revenue' | 'netIncome' | 'operatingIncom
   }
 }
 
-function ListPanel({
-  title,
-  items,
-  tone,
-  empty,
-}: {
-  title: string
-  items: string[]
-  tone: 'rose' | 'emerald'
-  empty: string
-}) {
-  const dot = tone === 'rose' ? 'bg-rose-400' : 'bg-brand-400'
+function KpiComparisonGrid({ rows }: { rows: MetricRow[] }) {
   return (
-    <div className="panel p-6">
-      <SectionTitle title={title} />
-      {items.length ? (
-        <ul className="flex flex-col gap-3">
-          {items.map((item, index) => (
-            <li
-              key={index}
-              className="flex gap-3 rounded-lg border border-slate-800/50 bg-ink-800/30 px-3.5 py-2.5 text-sm leading-relaxed text-slate-300"
+    <section className="flex flex-col gap-6">
+      <SectionTitle
+        title="KPI Comparison"
+        subtitle="Compare the same metric across every ingested company's latest fiscal year"
+      />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {KPI_DEFS.map((def) => (
+          <KpiCompareCard key={def.key} def={def} rows={rows} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function KpiCompareCard({
+  def,
+  rows,
+}: {
+  def: (typeof KPI_DEFS)[number]
+  rows: MetricRow[]
+}) {
+  const Icon = def.icon
+  const values = rows.map((row) => parseMoney(kpiValue(row, def.key)))
+  const finite = values.filter(
+    (v): v is number => typeof v === 'number' && Number.isFinite(v),
+  )
+  const max = finite.length ? Math.max(...finite) : 0
+
+  return (
+    <div className="panel panel-hover flex flex-col gap-2.5 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+            {def.title}
+          </p>
+          <p className="mt-0.5 truncate text-[11px] text-slate-500">
+            {def.subtitle}
+          </p>
+        </div>
+        <div
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${def.tone}`}
+        >
+          <Icon size={14} />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-2.5">
+        {rows.map((row, index) => {
+          const raw = kpiValue(row, def.key)
+          const numeric = parseMoney(raw)
+          const pct =
+            numeric !== null && max > 0 && numeric >= 0
+              ? Math.min(100, Math.max(4, (numeric / max) * 100))
+              : 0
+          const accentIndex = index % COMPANY_BAR_COLORS.length
+          return (
+            <div
+              key={`${row.company}-${row.year}`}
+              className="flex flex-col gap-1"
             >
-              <span className={`mt-2 h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
-              <span>{item}</span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-sm text-slate-500">{empty}</p>
-      )}
+              <div className="flex items-center gap-2">
+                <span
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[10px] font-bold ${COMPANY_CHIP_CLASSES[accentIndex]}`}
+                >
+                  {initials(row.company)}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-200">
+                  {row.company}{' '}
+                  <span className="text-slate-500">({row.year})</span>
+                </span>
+                <span className="shrink-0 text-sm font-semibold tabular-nums text-slate-100">
+                  {raw ?? '—'}
+                </span>
+              </div>
+              <div className="ml-8 h-1 overflow-hidden rounded-full bg-ink-700/60">
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${pct}%`,
+                    background: `linear-gradient(90deg, ${COMPANY_BAR_COLORS[accentIndex]} 0%, ${COMPANY_BAR_COLORS[accentIndex]}55 60%, ${COMPANY_BAR_COLORS[accentIndex]}14 100%)`,
+                    boxShadow: `0 0 6px ${COMPANY_BAR_COLORS[accentIndex]}40`,
+                  }}
+                />
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

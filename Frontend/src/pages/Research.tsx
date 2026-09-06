@@ -13,7 +13,7 @@ interface Message {
 const WELCOME_MESSAGE: Message = {
   role: 'assistant',
   content:
-    "Hello! I'm your AI Financial Research Analyst. Ask me anything about the ingested company reports — revenue trends, risk analysis, growth drivers, and more.",
+    "Welcome to InvestorIQ AI — your intelligent financial research assistant. Explore company performance, uncover key financial insights, analyze risks and growth drivers, and ask questions about your ingested reports to make faster, data-driven investment decisions.",
 }
 
 const SUGGESTIONS = [
@@ -77,7 +77,7 @@ function renderBlocks(markdown: string): ReactNode {
       blocks.push(
         <ul key={`ul-${key++}`} className="my-2 flex flex-col gap-1.5">
           {items.map((item, j) => (
-            <li key={j} className="flex gap-2.5 text-[14px] leading-relaxed">
+            <li key={j} className="flex gap-2.5 text-[13px] leading-relaxed">
               <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-400" />
               <span dangerouslySetInnerHTML={{ __html: renderInline(item) }} />
             </li>
@@ -96,7 +96,7 @@ function renderBlocks(markdown: string): ReactNode {
       }
       i--
       blocks.push(
-        <ol key={`ol-${key++}`} className="my-2 flex list-decimal flex-col gap-1.5 pl-5 text-[14px]">
+        <ol key={`ol-${key++}`} className="my-2 flex list-decimal flex-col gap-1.5 pl-5 text-[13px]">
           {items.map((item, j) => (
             <li key={j}>
               <span dangerouslySetInnerHTML={{ __html: renderInline(item) }} />
@@ -109,7 +109,7 @@ function renderBlocks(markdown: string): ReactNode {
 
     if (!line.trim()) continue
     blocks.push(
-      <p key={`p-${key++}`} className="mb-2 text-[14px] leading-relaxed">
+      <p key={`p-${key++}`} className="mb-2 text-[13px] leading-relaxed">
         <span dangerouslySetInnerHTML={{ __html: renderInline(line) }} />
       </p>,
     )
@@ -188,8 +188,8 @@ export default function Research() {
   const companySelected = company !== ''
 
   return (
-    <div className="flex h-[calc(100vh-9rem)] flex-col">
-      <header className="mb-5">
+    <div className="flex h-[calc(100vh-6.5rem)] flex-col">
+      <header className="mx-auto mb-5 w-full max-w-3xl">
         <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-brand-400">
           Conversational analysis
         </p>
@@ -203,7 +203,7 @@ export default function Research() {
         </p>
       </header>
 
-      <div className="panel flex flex-1 flex-col overflow-hidden">
+      <div className="panel mx-auto flex w-full max-w-3xl flex-1 flex-col overflow-hidden">
         {/* Filter bar */}
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-800/60 px-4 py-3">
           <Sparkles size={15} className="text-brand-400" />
@@ -213,14 +213,16 @@ export default function Research() {
           <select
             value={company}
             onChange={(e) => setCompany(e.target.value)}
-            className="w-48 rounded-lg border border-slate-700/60 bg-ink-800/60 px-3 py-1.5 text-sm text-slate-200 focus:border-brand-500/50 focus:outline-none"
+            className="w-48 rounded-lg border border-slate-600/70 bg-ink-700/70 px-3 py-1.5 text-sm text-slate-100 focus:border-brand-500/60 focus:outline-none [color-scheme:dark]"
           >
-            <option value="" disabled>
+            <option value="" disabled className="bg-ink-900 text-slate-400">
               Select company…
             </option>
-            <option value="All Companies">All Companies</option>
+            <option value="All Companies" className="bg-ink-900 text-slate-100">
+              All Companies
+            </option>
             {companies.map((c) => (
-              <option key={c} value={c}>
+              <option key={c} value={c} className="bg-ink-900 text-slate-100">
                 {c}
               </option>
             ))}
@@ -245,21 +247,19 @@ export default function Research() {
 
         {/* Messages */}
         <div ref={scrollRef} className="flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:px-6">
-          {messages.length === 1 && !busy && (
-            <div className="flex h-full flex-col items-center justify-center gap-6 text-center">
+          {messages.length === 1 && !busy ? (
+            <div className="flex min-h-full flex-col items-center justify-center gap-6 text-center">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500/20 to-accent-500/20 ring-1 ring-brand-500/30">
                 <Bot size={30} className="text-brand-300" />
               </div>
-              <div>
+              <div className="max-w-md">
                 <h2 className="text-lg font-semibold text-slate-200">
                   {companySelected
                     ? 'Ask anything about your reports'
                     : 'Select a company to get started'}
                 </h2>
-                <p className="mx-auto mt-1 max-w-md text-sm text-slate-400">
-                  {companySelected
-                    ? 'For example: what drove revenue growth, or which risks the company flagged this year.'
-                    : 'Choose a company from the Scope bar above to begin asking questions.'}
+                <p className="mx-auto mt-2 text-sm leading-relaxed text-slate-400">
+                  {WELCOME_MESSAGE.content}
                 </p>
               </div>
               {companySelected && (
@@ -277,22 +277,24 @@ export default function Research() {
                 </div>
               )}
             </div>
-          )}
+          ) : (
+            <>
+              {messages.map((msg, index) => (
+                <MessageBubble key={index} message={msg} />
+              ))}
 
-          {messages.map((msg, index) => (
-            <MessageBubble key={index} message={msg} />
-          ))}
-
-          {busy && (
-            <div className="flex items-start gap-3">
-              <Avatar role="assistant" />
-              <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm border border-slate-800/70 bg-ink-800/50 px-4 py-3">
-                <Spinner size={16} />
-                <span className="text-sm text-slate-400">
-                  Retrieving context &amp; generating…
-                </span>
-              </div>
-            </div>
+              {busy && (
+                <div className="flex items-start gap-3">
+                  <Avatar role="assistant" />
+                  <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm border border-slate-800/70 bg-ink-800/50 px-4 py-3">
+                    <Spinner size={16} />
+                    <span className="text-sm text-slate-400">
+                      Retrieving context &amp; generating…
+                    </span>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 

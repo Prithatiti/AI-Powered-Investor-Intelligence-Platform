@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import {
+  BarChart3,
+  Home,
   LayoutDashboard,
   Menu,
   MessagesSquare,
@@ -16,16 +18,28 @@ import { api } from '../lib/api'
 
 const NAV_ITEMS = [
   {
+    to: '/',
+    label: 'Home',
+    short: 'Home',
+    icon: Home,
+  },
+  {
     to: '/ingestion',
     label: 'Ingest Reports',
     short: 'Ingest',
     icon: UploadCloud,
   },
   {
-    to: '/',
+    to: '/dashboard',
     label: 'Dashboard',
     short: 'Dash',
     icon: LayoutDashboard,
+  },
+  {
+    to: '/comparison',
+    label: 'Financial Comparison',
+    short: 'Compare',
+    icon: BarChart3,
   },
   {
     to: '/research',
@@ -49,8 +63,8 @@ function Brand({ collapsed }: { collapsed: boolean }) {
       </div>
       {!collapsed && (
         <div className="leading-tight">
-          <p className="text-[15px] font-bold tracking-tight text-slate-100">
-            InvestorIQ
+          <p className="text-base font-bold tracking-tight text-slate-100">
+            InvestorIQ AI
           </p>
           <p className="text-[11px] font-medium uppercase tracking-widest text-slate-500">
             AI Intelligence
