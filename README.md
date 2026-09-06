@@ -256,7 +256,7 @@ npm install
 npm run dev
 ```
 
-Then open http://localhost:5173.  The Vite dev server proxies `/api/*`
+Then open http://localhost:5174.  The Vite dev server proxies `/api/*`
 calls to the FastAPI backend, and the sidebar shows real-time API health.
 
 > **Production:** `npm run build` outputs a static bundle in

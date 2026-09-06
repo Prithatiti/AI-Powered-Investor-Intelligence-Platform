@@ -2,6 +2,7 @@
 # Web Framework & API
 # ===========================================
 fastapi
+fastapi[standard]
 uvicorn
 pydantic
 Jinja2
