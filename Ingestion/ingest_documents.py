@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -126,6 +127,7 @@ def ingest_document(
     vector_store: AzureAISearchVectorStore,
     engine: Engine | None = None,
     extract_metrics: bool = True,
+    on_progress: Callable[[str, float], None] | None = None,
 ) -> int:
     """Chunk, embed, store, and extract metrics from a single Markdown report.
 
@@ -158,6 +160,10 @@ def ingest_document(
     extract_metrics : bool, optional
         When ``True`` (default) financial metrics are extracted from the
         freshly uploaded chunks and persisted to PostgreSQL.
+    on_progress : Callable[[str, float], None] | None, optional
+        Optional callback invoked with ``(stage, fraction)`` as the pipeline
+        progresses.  ``stage`` is one of ``"chunk"``, ``"indexing"``, or
+        ``"saving"``; ``fraction`` ranges from 0.0 to 1.0.
 
     Returns
     -------
@@ -198,6 +204,11 @@ def ingest_document(
         chunks=chunks,
         company=company,
         year=year,
+        on_progress=(
+            (lambda fraction: on_progress("indexing", fraction))
+            if on_progress is not None
+            else None
+        ),
     )
 
     # Extract financial metrics using the newly ingested data and persist
@@ -207,6 +218,7 @@ def ingest_document(
             engine=engine,
             company=company,
             year=year,
+            on_progress=on_progress,
         )
 
     return num_uploaded
@@ -219,6 +231,7 @@ def _extract_and_persist_metrics(
     engine: Engine | None,
     company: str,
     year: str,
+    on_progress: Callable[[str, float], None] | None = None,
 ) -> None:
     """Extract financial metrics from freshly ingested chunks and persist them.
 
@@ -237,6 +250,8 @@ def _extract_and_persist_metrics(
         Company of the newly ingested report.
     year : str
         Report year of the newly ingested report.
+    on_progress : Callable[[str, float], None] | None, optional
+        Optional progress callback forwarded from ``ingest_document``.
 
     Raises
     ------
@@ -247,6 +262,9 @@ def _extract_and_persist_metrics(
     from Database.create_table import CreateFinancialMetricsTable
     from Database.postgres_connect import CreateDatabase, CreateEngine
     from RAG.kpi_extractor import KPIExtractor
+
+    if on_progress is not None:
+        on_progress("saving", 0.0)
 
     if engine is None:
         database = os.getenv(key="POSTGRES_DATABASE", default="investoriq")
@@ -259,6 +277,9 @@ def _extract_and_persist_metrics(
     extractor = KPIExtractor(engine=engine)
     extractor.run(company=company, year=int(year))
     print(f"[METRICS] Metrics for {company} ({year}) persisted to PostgreSQL.")
+
+    if on_progress is not None:
+        on_progress("saving", 1.0)
 
 
 # ---------------------------------------------------------------------------

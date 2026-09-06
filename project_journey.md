@@ -238,29 +238,34 @@ Endpoints:
 
 ## Phase 10: React Frontend
 
-Status: Pending
+Status: Completed
 
-Pages:
+Framework:
 
-### Dashboard
+```text
+React 19 + TypeScript + Vite
+```
+
+Styling:
+
+```text
+Tailwind CSS v4 · Recharts · React Router · lucide-react
+```
+
+Screens (`Frontend/`):
+
+### Dashboard (`/`)
 
 Display:
 
-* Revenue
-* Net Income
-* Cash Flow
-* Debt
-* Documents Processed
+* Financial Overview (Revenue, Net Income, Operating Income, Cash Flow)
+* KPI stat cards (companies tracked, reports analyzed, avg revenue, avg net income)
+* Revenue vs Net Income comparison chart
+* Operating Income vs Cash Flow comparison chart
+* Balance sheet: Total Assets vs Total Liabilities
+* Company scorecards (risk factors, growth drivers, executive summary)
 
-### Company Comparison
-
-Display:
-
-* Company-to-Company Financial Comparisons
-* Revenue Trends
-* Profit Trends
-
-### AI Research
+### AI Research (`/research`)
 
 Support financial report research through RAG.
 
@@ -270,6 +275,11 @@ Example Questions:
 * What are the major risks?
 * What acquisitions were discussed?
 * Compare AI investments across companies.
+
+### Ingest Reports (`/ingestion`)
+
+* Drag-and-drop upload with `{year}_{company}` filename validation
+* PDF / Markdown / text ingestion into Azure AI Search + PostgreSQL
 
 ---
 

@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  /* Deep "terminal-grade" slate for the investment workspace */
+  --color-ink-950: #060a13;
+  --color-ink-900: #0a101f;
+  --color-ink-850: #0d1526;
+  --color-ink-800: #12203a;
+  --color-ink-700: #1c2e50;
+
+  /* Financial brand accent — emerald/green */
+  --color-brand-300: #6ee7b7;
+  --color-brand-400: #34d399;
+  --color-brand-500: #10b981;
+  --color-brand-600: #059669;
+
+  /* Secondary accent — sky */
+  --color-accent-400: #38bdf8;
+  --color-accent-500: #0ea5e9;
+
+  --shadow-glow: 0 0 40px rgba(16, 185, 129, 0.15);
+  --shadow-panel: 0 10px 40px -12px rgba(0, 0, 0, 0.55);
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: #cbd5e1;
+  background-color: var(--color-ink-950);
+  background-image:
+    radial-gradient(60rem 40rem at 85% -10%, rgba(16, 185, 129, 0.08), transparent 60%),
+    radial-gradient(50rem 35rem at -10% 20%, rgba(56, 189, 248, 0.07), transparent 60%);
+  background-attachment: fixed;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Selective scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-ink-700) transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-ink-700);
+  border-radius: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Reusable surface classes */
+.panel {
+  background: linear-gradient(
+    180deg,
+    rgba(148, 163, 184, 0.06),
+    rgba(148, 163, 184, 0.02)
+  );
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 1rem;
+  backdrop-filter: blur(10px);
+}
+
+.panel-hover {
+  transition:
+    border-color 0.25s ease,
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
+}
+.panel-hover:hover {
+  border-color: rgba(52, 211, 153, 0.35);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-glow);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #6ee7b7 0%, #38bdf8 60%, #a78bfa 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+}

@@ -66,6 +66,12 @@ Investor Insights & Q&A Chat
 │   ├── azure_ai_search.py     # Vector store: upload chunks to index
 │   ├── retriever.py           # Hybrid search retrieval
 │   └── __init__.py
+├── Frontend/
+│   ├── vite.config.ts         # Tailwind + /api dev proxy
+│   └── src/
+│       ├── pages/             # Dashboard · Research · Ingestion
+│       ├── components/        # Layout + shared UI primitives
+│       └── lib/               # API client + formatting helpers
 ├── main.py                    # Application entry-point
 ├── requirements.txt           # Python dependencies
 ├── pyproject.toml             # Project metadata & dependencies
@@ -210,6 +216,52 @@ POSTGRES_PASSWORD=
 | `POSTGRES_DATABASE`               | PostgreSQL database name                           |
 | `POSTGRES_USER`                   | PostgreSQL username                                |
 | `POSTGRES_PASSWORD`               | PostgreSQL password                                |
+
+---
+
+## Frontend (React UI)
+
+An attractive, responsive React UI lives in the `Frontend/` folder.  It
+reads from the FastAPI backend through a dev-time proxy, so no extra
+configuration is required for local development.
+
+### Directory Structure (Frontend)
+
+```text
+Frontend/
+├── index.html                  # App shell + fonts
+├── vite.config.ts              # Tailwind plugin + /api dev proxy
+└── src/
+    ├── App.tsx                 # Router (Dashboard / Research / Ingestion)
+    ├── components/
+    │   ├── Layout.tsx          # Sidebar + top-bar shell, health indicator
+    │   └── ui.tsx              # Shared primitives (spinner, panels, pills)
+    ├── lib/
+    │   ├── api.ts              # Typed API client for the FastAPI backend
+    │   └── format.ts           # Money parsing / list formatting helpers
+    ├── pages/
+    │   ├── Dashboard.tsx       # KPI cards, charts, company scorecards
+    │   ├── Research.tsx        # RAG-based conversational UI
+    │   └── Ingestion.tsx       # Drag-and-drop report upload
+    └── types.ts                # Shared response types
+```
+
+### Run the Frontend
+
+With the backend running (`uvicorn main:app --reload` on port `8000`):
+
+```bash
+cd Frontend
+npm install
+npm run dev
+```
+
+Then open http://localhost:5173.  The Vite dev server proxies `/api/*`
+calls to the FastAPI backend, and the sidebar shows real-time API health.
+
+> **Production:** `npm run build` outputs a static bundle in
+> `Frontend/dist`.  Serve it with any static host (or via the FastAPI app)
+> and point `VITE_API_URL` at the API base URL for non-proxied setups.
 
 ---
 

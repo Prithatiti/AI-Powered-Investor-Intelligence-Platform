@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import os
 import uuid
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from azure.core.credentials import AzureKeyCredential
@@ -139,6 +139,7 @@ class AzureAISearchVectorStore:
         company: str,
         year: str,
         batch_size: int = 100,
+        on_progress: Callable[[float], None] | None = None,
     ) -> int:
         """Embed ``chunks`` and upload them to the search index.
 
@@ -157,6 +158,9 @@ class AzureAISearchVectorStore:
             Report year (e.g. ``"2024"``).
         batch_size : int, optional
             How many documents to upload per batch.  Defaults to ``100``.
+        on_progress : Callable[[float], None] | None, optional
+            Optional callback invoked with a fraction (0.0 -> 1.0) as the
+            upload progresses.
 
         Returns
         -------
@@ -202,6 +206,8 @@ class AzureAISearchVectorStore:
             batch = documents[i : i + batch_size]
             self.search_client.upload_documents(documents=batch)
             total_uploaded += len(batch)
+            if on_progress is not None:
+                on_progress(total_uploaded / len(documents))
             print(f"  Uploaded {total_uploaded}/{len(documents)}")
 
         print(f"[OK] {total_uploaded} document(s) indexed into "
