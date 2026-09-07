@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { Bot, RotateCcw, Send, Sparkles, User } from 'lucide-react'
+import { Bot, Download, RotateCcw, Send, Sparkles, User } from 'lucide-react'
 
 import { Spinner } from '../components/ui'
 import { api } from '../lib/api'
@@ -118,6 +118,62 @@ function renderBlocks(markdown: string): ReactNode {
   return blocks
 }
 
+function buildTranscript(
+  messages: Message[],
+  company: string,
+  year: string,
+): string {
+  const date = new Date().toISOString()
+  const lines: string[] = []
+
+  lines.push('InvestorIQ AI — Conversation Transcript')
+  lines.push('=======================================')
+  lines.push('')
+  lines.push(`Generated: ${date}`)
+  const scopeName =
+    company === '' ? 'No company selected' : company
+  lines.push(
+    `Scope: ${scopeName}${year ? ` · Year: ${year}` : ''}`,
+  )
+  lines.push(
+    '=======================================',
+  )
+  lines.push('')
+
+  for (const msg of messages) {
+    const speaker =
+      msg.role === 'user' ? 'USER' : 'AI ASSISTANT'
+    lines.push(`${speaker}:`)
+    lines.push('')
+    lines.push(msg.content.trim())
+    lines.push('')
+    lines.push('---')
+    lines.push('')
+  }
+
+  return lines.join('\n')
+}
+
+function downloadTranscript(
+  messages: Message[],
+  company: string,
+  year: string,
+): void {
+  const content = buildTranscript(messages, company, year)
+  const blob = new Blob([content], {
+    type: 'text/plain;charset=utf-8',
+  })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  const date = new Date().toISOString().slice(0, 10)
+  anchor.href = url
+  anchor.download = `investoriq-conversation-${date}.txt`
+  document.body.appendChild(anchor)
+  anchor.click()
+  document.body.removeChild(anchor)
+  URL.revokeObjectURL(url)
+}
+
 export default function Research() {
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE])
   const [input, setInput] = useState('')
@@ -190,17 +246,39 @@ export default function Research() {
   return (
     <div className="flex h-[calc(100vh-6.5rem)] flex-col">
       <header className="mx-auto mb-5 w-full max-w-3xl">
-        <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-brand-400">
-          Conversational analysis
-        </p>
-        <h1 className="text-3xl font-bold tracking-tight text-slate-50 sm:text-4xl">
-          AI <span className="text-gradient">Research</span>
-        </h1>
-        <p className="mt-1.5 max-w-2xl text-sm text-slate-400">
-          Ask grounded questions about any ingested annual report. Answers are
-          retrieved from the Azure AI Search index and generated from the
-          underlying evidence.
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-brand-400">
+              Conversational analysis
+            </p>
+            <h1 className="flex items-center gap-3 text-3xl font-bold tracking-tight text-slate-50 sm:text-4xl">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500/20 to-accent-500/20 ring-1 ring-brand-500/30">
+                <Bot size={24} className="text-brand-300" />
+              </span>
+              AI <span className="text-gradient">Research</span>
+            </h1>
+            <p className="mt-1.5 max-w-2xl text-sm text-slate-400">
+              Ask grounded questions about any ingested annual report. Answers
+              are retrieved from the Azure AI Search index and generated from
+              the underlying evidence.
+            </p>
+          </div>
+          {messages.length > 1 && (
+            <button
+              type="button"
+              onClick={() =>
+                downloadTranscript(messages, company, year)
+              }
+              title="Download conversation transcript"
+              className="mt-11 inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-700/60 bg-ink-800/60 px-3 py-2 text-xs font-medium text-slate-300 transition hover:border-brand-500/40 hover:text-brand-200"
+            >
+              <Download size={14} />
+              <span className="hidden sm:inline">
+                Download Conversation
+              </span>
+            </button>
+          )}
+        </div>
       </header>
 
       <div className="panel mx-auto flex w-full max-w-3xl flex-1 flex-col overflow-hidden">

@@ -42,7 +42,7 @@ load_dotenv(dotenv_path=PROJECT_ROOT / ".env")
 
 def _sse(event: str, data: dict) -> str:
     """Serialize one Server-Sent Event payload."""
-    payload = json.dumps(data, ensure_ascii=False)
+    payload = json.dumps(obj=data, ensure_ascii=False)
     return f"event: {event}\ndata: {payload}\n\n"
 
 
@@ -86,7 +86,7 @@ def _run_pipeline_sync(file: UploadFile, events: Queue) -> None:
                 ) from exc
         else:
             md_path = file_path
-        events.put(_sse(event="progress", data={"stage": "convert", "percent": 25}))
+        events.put(item=_sse(event="progress", data={"stage": "convert", "percent": 25}))
 
         embeddings = AzureOpenAIEmbeddings(
             model=os.getenv(key="AZURE_OPENAI_EMBEDDING_MODEL")
@@ -120,7 +120,7 @@ def _run_pipeline_sync(file: UploadFile, events: Queue) -> None:
                 percent = 80 + int(fraction * 19)
             else:
                 percent = 25
-            events.put(_sse("progress", {"stage": stage, "percent": min(percent, 99)}))
+            events.put(_sse(event="progress", data={"stage": stage, "percent": min(percent, 99)}))
 
         chunks_uploaded = ingest_document(
             filepath=md_path,
@@ -129,7 +129,7 @@ def _run_pipeline_sync(file: UploadFile, events: Queue) -> None:
             on_progress=on_progress,
         )
 
-        events.put(item=_sse("progress", {"stage": "saving", "percent": 100}))
+        events.put(item=_sse(event="progress", data={"stage": "saving", "percent": 100}))
         events.put(
             item=_sse(
                 event="complete",
@@ -222,7 +222,7 @@ async def upload_document(file: UploadFile = UPLOAD_FILE):
                         if exc is not None
                         else "Upload failed: no response from server."
                     )
-                    yield _sse("error", {"message": message}).encode("utf-8")
+                    yield _sse(event="error", data={"message": message}).encode(encoding="utf-8")
                 break
 
             # Yield to the event loop so the response can flush queued data.

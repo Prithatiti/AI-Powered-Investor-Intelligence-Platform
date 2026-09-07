@@ -6,7 +6,10 @@ Platform. It provides three screens backed by the FastAPI backend:
 - **Dashboard** (`/`) — financial overview with KPIs, comparison charts
   (Recharts) and company scorecards.
 - **AI Research** (`/research`) — conversational RAG-based Q&A over the
-  ingested annual reports.
+  ingested annual reports, with a branded AI/chatbot icon in the heading and
+  a **Download Conversation** action that exports the full transcript
+  (chronological, user/AI-distinguished, including the selected company/report
+  scope) as a plain-text file.
 - **Ingest Reports** (`/ingestion`) — drag-and-drop upload of annual
   reports with `{year}_{company}` filename validation.
 

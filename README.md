@@ -241,7 +241,7 @@ Frontend/
     │   └── format.ts           # Money parsing / list formatting helpers
     ├── pages/
     │   ├── Dashboard.tsx       # KPI cards, charts, company scorecards
-    │   ├── Research.tsx        # RAG-based conversational UI
+    │   ├── Research.tsx        # RAG-based conversational UI (+ download transcript)
     │   └── Ingestion.tsx       # Drag-and-drop report upload
     └── types.ts                # Shared response types
 ```
@@ -262,6 +262,19 @@ calls to the FastAPI backend, and the sidebar shows real-time API health.
 > **Production:** `npm run build` outputs a static bundle in
 > `Frontend/dist`.  Serve it with any static host (or via the FastAPI app)
 > and point `VITE_API_URL` at the API base URL for non-proxied setups.
+
+### AI Research Features
+
+- **AI/chatbot heading icon** — the **AI Research** page header renders a
+  branded bot icon (lucide `Bot` in the gradient badge style) next to the
+  title, matching the existing InvestorIQ AI theme.
+- **Download Conversation** — once a conversation has started, the header
+  shows a **Download Conversation** button that exports the complete
+  transcript as a plain-text file (`investoriq-conversation-YYYY-MM-DD.txt`).
+  The transcript preserves the conversation in chronological order, labels
+  each turn as **USER** or **AI ASSISTANT**, and includes the selected
+  company/report scope when one is set.  Full message content is retained
+  without truncation.
 
 ---
 
