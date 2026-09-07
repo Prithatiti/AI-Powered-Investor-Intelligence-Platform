@@ -215,7 +215,7 @@ async def upload_document(file: UploadFile = UPLOAD_FILE):
                 if not drained:
                     try:
                         exc = worker.exception()
-                    except BaseException:
+                    except BaseException:  # noqa: BLE001
                         exc = None
                     message = (
                         f"Ingestion failed: {exc}"
